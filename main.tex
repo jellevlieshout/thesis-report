@@ -66,6 +66,8 @@
 \lhead{\tfm}                    % Set the header right-side contents
 \rhead{\name}                   % Set the header left-side contents
 \cfoot{\thepage}                % Set the footer page number
+\setlength{\headheight}{14.5pt} % Fix fancyhdr warning about headheight
+\addtolength{\topmargin}{-2.5pt}
 
 % Create a custom command shortcut
 \renewcommand{\arraystretch}{1.3} % Modify the vertical spacing of the tables
@@ -95,13 +97,9 @@
 
 % Set the author format
 \author {
-	\normalsize
-	\begin{tabbing}
-        \hspace*{0.4\linewidth} \= \hspace*{0.5\linewidth} \= \kill
-    	\> Author: \' \textbf{\me} \\[0.25cm]
-    	\> Supervisor: \' \textbf{\supervisor} \\
-    \end{tabbing}
-    
+    \normalsize
+    Author: \textbf{\me} \\[0.25cm]
+    Supervisor: \textbf{\supervisor}
     \vspace{2cm}
 }
 
@@ -128,6 +126,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Start the document
 \begin{document}
+    \pagenumbering{Alph}  % Use letters for front matter to avoid duplicate page.1
     % Include the cover
     \afterpage{\blankpage}
     \input{cover.tex}
@@ -139,6 +138,8 @@
     \input{includes/index_tables}
     \input{includes/index_figures}
     \input{includes/index_equations}
+    \pagenumbering{arabic}  % Switch to arabic numbers for main content
+    \setcounter{page}{1}    % Reset page counter
     \input{includes/intro}
     \input{includes/development}
     \input{includes/conclusions}
