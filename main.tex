@@ -59,6 +59,8 @@
 \usepackage{siunitx}            % For SI units
 \usepackage{graphicx}           % To include graphics
 \usepackage[dvipsnames]{xcolor} % To configure colors
+\usepackage[numbers]{natbib}    % Better bibliography management
+\usepackage{bibentry}           % To display bibliography entries inline
 \usepackage{fancyhdr}           % To configure the header and footer
 \pagestyle{fancy}               % Use a fancy header style
 \fancyhf{}                      % Set the header format
@@ -127,6 +129,7 @@
 % Start the document
 \begin{document}
 \pagenumbering{Alph}  % Use letters for front matter to avoid duplicate page.1
+\nobibliography*        % Initialize bibentry
 % Include the cover
 \afterpage{\blankpage}
 \input{cover.tex}
