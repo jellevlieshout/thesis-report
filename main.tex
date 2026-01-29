@@ -131,19 +131,43 @@
     \afterpage{\blankpage}
     \input{cover.tex}
     % Include the different sections
+    \clearpage
     \input{includes/abstract}
+    \clearpage
     \input{includes/resumen}
+    \clearpage
     \input{includes/acknowledgement}
+    \clearpage
     \input{includes/index}
+    \clearpage
     \input{includes/index_tables}
+    \clearpage
     \input{includes/index_figures}
+    \clearpage
     \input{includes/index_equations}
     \pagenumbering{arabic}  % Switch to arabic numbers for main content
     \setcounter{page}{1}    % Reset page counter
-    \input{includes/intro}
-    \input{includes/development}
-    \input{includes/conclusions}
+    \clearpage
+    \input{includes/introduction}
+    \clearpage
+    \input{includes/background}
+    \clearpage
+    \input{includes/system_design}
+    \clearpage
+    \input{includes/rq1_detection}
+    \clearpage
+    \input{includes/rq2_decomposition}
+    \clearpage
+    \input{includes/rq3_replacement}
+    \clearpage
+    \input{includes/rq4_observability}
+    \clearpage
+    \input{includes/discussion}
+    \clearpage
+    \input{includes/conclusion}
+    \clearpage
     \input{includes/references}
+    \clearpage
     \input{includes/annex}
 \end{document}
 % Finish the document
