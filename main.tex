@@ -59,6 +59,8 @@
 \usepackage{siunitx}            % For SI units
 \usepackage{graphicx}           % To include graphics
 \usepackage[dvipsnames]{xcolor} % To configure colors
+\usepackage[numbers]{natbib}    % Better bibliography management
+\usepackage{bibentry}           % To display bibliography entries inline
 \usepackage{fancyhdr}           % To configure the header and footer
 \pagestyle{fancy}               % Use a fancy header style
 \fancyhf{}                      % Set the header format
@@ -126,24 +128,49 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Start the document
 \begin{document}
-    \pagenumbering{Alph}  % Use letters for front matter to avoid duplicate page.1
-    % Include the cover
-    \afterpage{\blankpage}
-    \input{cover.tex}
-    % Include the different sections
-    \input{includes/abstract}
-    \input{includes/resumen}
-    \input{includes/acknowledgement}
-    \input{includes/index}
-    \input{includes/index_tables}
-    \input{includes/index_figures}
-    \input{includes/index_equations}
-    \pagenumbering{arabic}  % Switch to arabic numbers for main content
-    \setcounter{page}{1}    % Reset page counter
-    \input{includes/intro}
-    \input{includes/development}
-    \input{includes/conclusions}
-    \input{includes/references}
-    \input{includes/annex}
+\pagenumbering{Alph}  % Use letters for front matter to avoid duplicate page.1
+\nobibliography*        % Initialize bibentry
+% Include the cover
+\afterpage{\blankpage}
+\input{cover.tex}
+% Include the different sections
+\clearpage
+\input{includes/abstract}
+\clearpage
+\input{includes/resumen}
+\clearpage
+\input{includes/acknowledgement}
+\clearpage
+\input{includes/index}
+\clearpage
+\input{includes/index_tables}
+\clearpage
+\input{includes/index_figures}
+\clearpage
+\input{includes/index_equations}
+\pagenumbering{arabic}  % Switch to arabic numbers for main content
+\setcounter{page}{1}    % Reset page counter
+\clearpage
+\input{includes/introduction}
+\clearpage
+\input{includes/background}
+\clearpage
+\input{includes/system_design}
+\clearpage
+\input{includes/rq1_detection}
+\clearpage
+\input{includes/rq2_decomposition}
+\clearpage
+\input{includes/rq3_replacement}
+\clearpage
+\input{includes/rq4_observability}
+\clearpage
+\input{includes/discussion}
+\clearpage
+\input{includes/conclusion}
+\clearpage
+\input{includes/references}
+\clearpage
+\input{includes/annex}
 \end{document}
 % Finish the document

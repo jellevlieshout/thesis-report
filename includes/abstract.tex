@@ -3,8 +3,12 @@
 
 \begin{center}
     \section*{Abstract}
-    
-        ...
+
+    Figurative language, such as idioms and metaphors, presents a significant barrier to text accessibility and downstream Natural Language Processing tasks. While Large Language Models (LLMs) have shown promise in general language understanding, their ability to reliably handle figurative expressions in zero-shot scenarios remains under-explored compared to task-specific supervised models. This thesis investigates the effectiveness of agentic LLM pipelines for the detection, interpretation, and Easy-to-Read (E2R) adaptation of figurative language.
+
+    We propose a multi-stage agentic workflow that explicitly decomposes the task into detection, explanation, literal replacement, and self-verification. Using the SemEval-2022 Task 2 dataset for idioms and the VU Amsterdam Metaphor Corpus for metaphors, we evaluate the system's performance against both monolithic single-prompt LLM baselines and established supervised benchmarks.
+
+    We hypothesize that an agentic decomposition significantly improves the quality of literal replacements compared to standard prompting, particularly for complex metaphors that rely on abstract source-target mappings. Furthermore, we explore the trade-offs between semantic fidelity and readability in the generated replacements. This work aims to demonstrate that structured, observable agentic reasoning enables reliable figurative language interpretation and transformation without the need for extensive task-specific training, thereby contributing to more accessible and inclusive digital content.
 
 \end{center}
 

@@ -1,0 +1,23 @@
+\section{System Design \& Methodology}
+
+\subsection{Problem formulation}
+\begin{itemize}
+    \item Input: raw text
+    \item Output: literalized, meaning-preserving text + intermediate explanations
+\end{itemize}
+
+\subsection{Agentic pipeline}
+\begin{itemize}
+    \item Figurative span detection
+    \item Interpretation / explanation
+    \item Literal replacement generation
+    \item Self-verification \& revision
+    \item Self-learning through addition to RAG?
+\end{itemize}
+
+\subsection{Baselines}
+\begin{itemize}
+    \item Monolithic single-prompt LLM
+    \item Detection-only prompting
+    \item Naïve paraphrasing
+\end{itemize}
