@@ -137,3 +137,5 @@
 
 - Overall idea:
     - Structured, observable, agentic reasoning with LLMs enables reliable figurative language interpretation and transformation without task-specific training.
+- Note:
+    - Option + Z = rewrap text
