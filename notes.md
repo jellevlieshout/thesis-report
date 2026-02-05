@@ -175,3 +175,212 @@
 - I'm focussing on metaphor detection (and not replacement) for now, to build a prototype.
 - I need to start thinking on how I will evaluate the replacement quality of the agent. There aren't really any datasets available for this task, so I'll need to come up with a custom evaluation protocol. 
 - I have added a client & front-end interface for the SemEval-2022 Task 2 dataset, which is a dataset for idiom detection and replacement. 
+
+- Evaluation rundown:
+
+#### Evaluation of Figurative Language Systems
+
+This section focuses on evaluation methodologies for figurative language processing, with emphasis on metaphor and idiom interpretation and generation. It explains commonly proposed automatic metrics, their limitations for figurative language, and outlines alternative and complementary evaluation strategies more aligned with the nature of the task.
+
+---
+
+##### 1. Standard Automatic Evaluation Metrics
+
+###### 1.1 BLEU
+
+**What it measures**
+- N-gram overlap between a system output and one or more reference texts.
+- Primarily precision-oriented, with a brevity penalty for short outputs.
+
+**How it works**
+- Counts overlapping n-grams (typically 1–4 grams).
+- Applies a penalty if the generated output is shorter than the reference.
+
+**Limitations for figurative language**
+- Figurative paraphrases intentionally avoid lexical overlap.
+- Multiple correct interpretations may share no surface n-grams.
+- Poor correlation with human judgment for metaphor explanation or reinterpretation.
+
+**Summary**
+> BLEU is largely misaligned with tasks involving semantic reinterpretation and figurative meaning.
+
+---
+
+###### 1.2 SARI
+
+**What it measures**
+- Quality of **Add**, **Delete**, and **Keep** operations relative to the input and references.
+- Originally designed for text simplification.
+
+**How it works**
+- Rewards deletion of complex expressions.
+- Rewards addition of clarifying material.
+- Rewards retention of essential content.
+
+**Relevance to figurative language**
+- Figurative-to-literal transformation resembles simplification.
+- Encourages meaning preservation under transformation.
+
+**Limitations**
+- Assumes availability of high-quality reference simplifications.
+- Penalizes valid outputs when multiple paraphrases are possible.
+
+**Summary**
+> SARI is better aligned than BLEU but still constrained by reference dependence.
+
+---
+
+###### 1.3 BERTScore
+
+**What it measures**
+- Semantic similarity between generated text and reference text using contextual embeddings.
+
+**How it works**
+- Computes cosine similarity between contextualized token embeddings.
+- Allows soft alignment rather than exact string matches.
+
+**Strengths**
+- Robust to paraphrasing and lexical variation.
+- Captures semantic proximity more effectively than n-gram metrics.
+
+**Limitations**
+- High similarity does not guarantee correct interpretation.
+- Can reward plausible but incorrect explanations.
+- Does not explicitly test figurative understanding.
+
+**Summary**
+> BERTScore measures semantic closeness, not interpretive correctness.
+
+---
+
+##### 2. Why Figurative Language Challenges Standard Metrics
+
+Standard automatic metrics rely on assumptions that do not hold for figurative language:
+
+| Assumption | Why it fails |
+|----------|-------------|
+| Single correct output | Figurative expressions admit multiple valid interpretations |
+| Lexical overlap signals correctness | Figurative paraphrases often diverge lexically |
+| Surface similarity implies meaning preservation | Figurative interpretation requires inference |
+| References are exhaustive | Human references rarely cover the full meaning space |
+
+As a result, automatic metrics often correlate weakly with human judgments in metaphor and idiom tasks.
+
+---
+
+##### 3. More Relevant Evaluation Approaches
+
+###### 3.1 Human-Centered Evaluation
+
+Human judgment remains essential for evaluating figurative language understanding.
+
+###### (a) Meaning Fidelity
+> Does the output preserve the intended meaning of the figurative expression?
+
+Typical scale (1–5):
+- 1: Incorrect or misleading
+- 3: Partially correct
+- 5: Fully faithful interpretation
+
+###### (b) Interpretability / Clarity
+> Is the explanation understandable to a non-expert reader?
+
+###### (c) Figurative Awareness
+> Does the system recognize the expression as figurative rather than literal?
+
+This can be evaluated as:
+- Binary (figurative vs. literal)
+- Graded (literal / mixed / figurative)
+
+---
+
+###### 3.2 Span-Level and Classification Evaluation
+
+For systems that output spans or labels:
+- Precision, Recall, and F1-score over:
+  - Figurative span detection
+  - Metaphor vs. idiom classification
+
+This approach aligns well with datasets such as VU Amsterdam Metaphor Corpus, MOH-X, and SemEval idiom benchmarks.
+
+---
+
+###### 3.3 Faithfulness and Consistency Tests
+
+###### (a) Perturbation-Based Evaluation
+- Replace figurative expressions with literal paraphrases.
+- Verify whether explanations change appropriately.
+
+##### (b) Consistency Evaluation
+- Check whether identical metaphors across different contexts yield consistent core interpretations.
+
+These tests probe conceptual understanding rather than surface-level similarity.
+
+---
+
+###### 3.4 LLM-as-a-Judge Evaluation
+
+A stronger language model can be used solely as an evaluator under strict controls.
+
+**Evaluation criteria**
+- Meaning preservation
+- Figurative recognition
+- Hallucination detection
+
+**Methodological safeguards**
+- Fixed evaluation rubric
+- Blind assessment (no model identity)
+- Measurement of agreement with human annotators
+
+When transparently reported, this approach is increasingly accepted in NLP research.
+
+---
+
+###### 3.5 Concept-Level Evaluation (Conceptual Metaphors)
+
+For datasets grounded in conceptual metaphor theory (e.g., MetaNet):
+
+Evaluate whether the system correctly identifies:
+- Source domain
+- Target domain
+- Source–target mapping (e.g., ANGER → HEAT)
+
+Scoring can be:
+- Exact match
+- Partial match
+- Incorrect
+
+This form of evaluation directly targets conceptual understanding and is underexplored in current literature.
+
+---
+
+##### 4. Proposed Multi-Layer Evaluation Framework
+
+A defensible evaluation protocol for figurative language systems can be structured as follows:
+
+###### Layer 1 – Detection Accuracy
+- Span-level Precision, Recall, and F1
+
+###### Layer 2 – Semantic Similarity (Supporting)
+- BERTScore
+- SARI (for figurative-to-literal transformation)
+
+###### Layer 3 – Interpretive Correctness (Primary)
+- Human evaluation of meaning fidelity
+- Assessment of figurative awareness
+
+###### Layer 4 – Conceptual Grounding
+- Correctness of conceptual metaphor mappings
+- Idiom sense disambiguation accuracy
+
+---
+
+##### 5. Contribution to the Thesis
+
+Most figurative language research prioritizes model performance and treats evaluation as secondary. By contrast, this thesis positions evaluation as a primary contribution by:
+
+- Demonstrating the limitations of standard automatic metrics
+- Proposing task-aligned, concept-aware evaluation methods
+- Empirically analyzing the gap between automatic scores and human judgment
+
+This approach is model-agnostic, methodologically rigorous, and well-aligned with current research needs in figurative language processing.
