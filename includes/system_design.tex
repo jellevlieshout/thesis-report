@@ -4,11 +4,16 @@
 \begin{itemize}
     \item Input: raw text
     \item Output: literalized, meaning-preserving text + intermediate explanations
+    \item Challenge: Metaphors often encode meaning that cannot be fully literalized without loss; replacing them requires significant nuance and linguistic understanding.
 \end{itemize}
 
 \subsection{Agentic pipeline}
 \begin{itemize}
-    \item Figurative span detection
+    \item Figurative span detection:
+    \begin{itemize}
+        \item Input: Raw text (e.g., ``Yesterday it was raining cats and dogs.'')
+        \item Output: JSON structure containing \texttt{metaphor\_spans} (text, character start/end positions, confidence score).
+    \end{itemize}
     \item Interpretation / explanation
     \item Literal replacement generation
     \item Self-verification \& revision
