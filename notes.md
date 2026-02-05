@@ -1,6 +1,7 @@
 # Notes
 
 ## 22-01-2026
+
 - I started working on my thesis today.
 - Set up the repository for the application & report.
 - Decided I will use Bluetext & Polytope (software infrastructure related to my internship) to build the backbone of the experiments & analysis.
@@ -139,3 +140,36 @@
     - Structured, observable, agentic reasoning with LLMs enables reliable figurative language interpretation and transformation without task-specific training.
 - Note:
     - Option + Z = rewrap text
+
+## 05-02-2026
+
+- Continuation of thesis work. Objectives for today are:
+   - Build a client to interface with an initial dataset -> VU Amsterdam Metaphor Corpus
+   - Further research and decision on evaluation methods for the figurative language replacement task. 
+- The Oxford Text Archive is down; they have a legacy website up through [here](https://ota.bodleian.ox.ac.uk/repository/xmlui/handle/20.500.12024/2541). 
+- The VU Amsterdam Metaphor Corpus is available as XML, which I will add to the repository. I will create a client to easily interface with the dataset.
+- Most of the metaphors look less straightforward to replace than I initially thought. There's quite a lot of nuance and understanding of the English language required to replace them with literal, meaning-preserving alternatives. 
+- I've added a client to interface with the VU Amsterdam Metaphor Corpus. I'm interested to see if we can easily 'merge' datasets and if their annotation methodologies are similar. I should probably dedicate a section of the report to these differences. 
+- I'm also wondering what will be a good 'format' (both in and output) to present a potential metaphor to the agent, as well as how to structure the output. I'm thinking of taking inspiration from the methodology the datasets use to structure their data.
+- I've implemented an agentic flow that does detection according to the following format:
+```
+    Canonical Metaphor Detection I/O (v1)
+    
+    Input: Yesterday it was raining cats and dogs.
+
+    Task: Detect Metaphors
+
+    Output: 
+    {
+      "metaphor_spans": [
+        {
+          "text": "raining cats and dogs",
+          "char_start": 17,
+          "char_end": 38,
+          "confidence": 1
+        }
+      ]
+    }
+```
+
+- I'm focussing on metaphor detection (and not replacement) for now, to build a prototype.
