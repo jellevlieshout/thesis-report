@@ -173,3 +173,5 @@
 ```
 
 - I'm focussing on metaphor detection (and not replacement) for now, to build a prototype.
+- I need to start thinking on how I will evaluate the replacement quality of the agent. There aren't really any datasets available for this task, so I'll need to come up with a custom evaluation protocol. 
+- I have added a client & front-end interface for the SemEval-2022 Task 2 dataset, which is a dataset for idiom detection and replacement. 

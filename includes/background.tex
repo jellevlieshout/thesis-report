@@ -8,12 +8,18 @@
 
 \subsection{Datasets}
 \begin{itemize}
-    \item SemEval-2022 Task 2 (idioms)
-    \item VU Amsterdam Metaphor Corpus (VUAMC)
+    \item SemEval-2022 Task 2 (idioms) \cite{tayyar-madabushi-etal-2022-semeval}
     \begin{itemize}
-        \item Generally available via the Oxford Text Archive (currently down, legacy link accessible).
-        \item The corpus is available as XML.
-        \item A Python client has been developed to interface with the dataset.
+        \item This shared task focuses on multilingual idiomaticity detection and sentence embedding.
+        \item It involves a binary classification subtask to determine whether a sentence contains an idiomatic expression.
+        \item A Python client has been developed to interface with this dataset for training and evaluation purposes.
+    \end{itemize}
+    \item VU Amsterdam Metaphor Corpus (VUAMC) \cite{vuamsterdammetaphorcorpus}
+    \begin{itemize}
+        \item The VUAMC is a large, annotated corpus of English texts, manually tagged for metaphorical language use.
+        \item It is generally available via the Oxford Text Archive (currently down, legacy link accessible).
+        \item The corpus is available as XML, providing rich metadata for each token.
+        \item A Python client has been developed to interface with the dataset, enabling easy access and filtering of metaphorical instances.
         \item Goal: Compare annotation methodology with other datasets and explore possibilities for merging.
     \end{itemize}
     \item Supporting datasets (MAGPIE, TroFi, MOH)
