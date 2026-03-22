@@ -1,36 +1,77 @@
 \section{Background \& Related Work}
 
-\subsection{Figurative language}
+\subsection{Figurative Language}
 \begin{itemize}
-    \item Idioms vs metaphors (linguistic + cognitive distinction)
-    \item Prior work on detection, classification, and simplification
+    \item Idioms vs metaphors (linguistic + cognitive distinction) % TODO: expand
+    \item Prior work on detection, classification, and simplification % TODO: expand
 \end{itemize}
 
 \subsection{Datasets}
+
+\subsubsection{VU Amsterdam Metaphor Corpus (VUAMC)}
+
+The VU Amsterdam Metaphor Corpus \cite{vuamsterdammetaphorcorpus} is a large, manually annotated corpus of English texts drawn from four genres: academic prose, news, fiction, and conversation. Metaphor annotation follows the MIP (Metaphor Identification Procedure) \cite{mipvu}: for each content word, annotators assess whether its contextual meaning contrasts with a more basic, concrete meaning from which the contextual meaning can be derived by comparison. Words meeting this criterion are labelled metaphorical.
+
+The corpus is distributed as an XML file and contains 16{,}202 English sentences, each with per-token metaphoricity labels (binary: metaphorical / non-metaphorical). Crucially, the VUAMC provides \textit{token-level} annotations rather than span- or sentence-level ones, making it well-suited for evaluating fine-grained detection but challenging for span-based models, since a single conceptual metaphor may involve multiple individually annotated tokens.
+
+A custom Python client was developed to parse the XML, extract sentence-token structures, and derive character-offset spans from the token annotations. All 16{,}202 sentences are ingested into the experiment database. The VUAMC does \textit{not} include gold literal paraphrases; replacement evaluation on this dataset therefore relies on detection metrics and human evaluation only.
+
+\subsubsection{SemEval-2022 Task 2: Multilingual Idiomaticity Detection and Sentence Embedding}
+
+SemEval-2022 Task 2 \cite{tayyar-madabushi-etal-2022-semeval} is a shared task on idiom detection and interpretation in English, Portuguese, and Galician. This thesis uses the English (EN) partition of Subtask A and Subtask B:
 \begin{itemize}
-    \item SemEval-2022 Task 2 (idioms) \cite{tayyar-madabushi-etal-2022-semeval}
-    \begin{itemize}
-        \item This shared task focuses on multilingual idiomaticity detection and sentence embedding.
-        \item It involves a binary classification subtask to determine whether a sentence contains an idiomatic expression.
-        \item A Python client has been developed to interface with this dataset for training and evaluation purposes.
-    \end{itemize}
-    \item VU Amsterdam Metaphor Corpus (VUAMC) \cite{vuamsterdammetaphorcorpus}
-    \begin{itemize}
-        \item The VUAMC is a large, annotated corpus of English texts, manually tagged for metaphorical language use.
-        \item It is generally available via the Oxford Text Archive (currently down, legacy link accessible).
-        \item The corpus is available as XML, providing rich metadata for each token.
-        \item A Python client has been developed to interface with the dataset, enabling easy access and filtering of metaphorical instances.
-        \item Goal: Compare annotation methodology with other datasets and explore possibilities for merging.
-    \end{itemize}
-    \item Supporting datasets (MAGPIE, TroFi, MOH)
-    \item Conceptual resources (MetaNet)
+    \item \textbf{Subtask A} provides sentences containing a pre-identified multi-word expression (MWE) and asks whether the MWE is used idiomatically in context (binary classification). Gold annotations include character-offset span boundaries for the MWE.
+    \item \textbf{Subtask B} provides gold literal paraphrases of the full sentence for a subset of Subtask A examples, enabling evaluation of replacement quality.
 \end{itemize}
+
+The English partition contains 3{,}487 sentences after filtering and joining Tasks A and B. Gold paraphrases from Task B are stored alongside each example and used as references for BLEU and BERTScore evaluation. Unlike the VUAMC, SemEval 2022 Task 2 is evaluated at the sentence and span level, with no per-token labels.
+
+\subsubsection{Supporting Datasets (Planned)}
+\begin{itemize}
+    \item MAGPIE \cite{magpie}: idiom interpretation robustness (qualitative / stress testing)
+    \item TroFi \cite{trofi}: verb metaphor detection (focused evaluation)
+    \item MOH / MOH-X \cite{moh}: verb metaphor detection (secondary validation)
+    \item MetaNet: conceptual metaphor grounding (interpretation support)
+\end{itemize}
+
+\subsection{Evaluation Methodology}
+\label{sec:eval-methodology}
+
+Standard automatic metrics are commonly applied to generation and paraphrase tasks, but their suitability for figurative language is limited. This section outlines the key metrics used in this thesis and discusses their limitations in the context of figurative-to-literal adaptation.
+
+\subsubsection{Automatic Metrics}
+
+\paragraph{BLEU.} BLEU measures n-gram overlap between a system output and one or more reference texts~\cite{papineni2002bleu}. It is precision-oriented and applies a brevity penalty. For figurative language replacement, BLEU is severely misaligned: literal paraphrases of idiomatic expressions intentionally avoid lexical overlap with the gold reference, and multiple semantically equivalent paraphrases may share no surface n-grams. BLEU is retained here primarily as a baseline point of comparison, but its low values should not be interpreted as evidence of poor replacement quality.
+
+\paragraph{SARI.} SARI decomposes quality into Add, Delete, and Keep operations relative to the input and references, and was originally designed for text simplification \cite{xu2016sari}. Figurative-to-literal transformation closely resembles simplification (replacing opaque expressions with transparent ones), making SARI conceptually well-motivated. Its practical limitation is reference dependence; it is not yet implemented but is under consideration.
+
+\paragraph{BERTScore.} BERTScore computes contextual token-embedding similarity between generated and reference texts using a pre-trained language model (RoBERTa in this work), enabling soft alignment rather than exact string matching \cite{zhang2020bertscore}. This makes it more robust to paraphrase variation than BLEU. However, high BERTScore does not guarantee correct interpretation: a plausible but semantically incorrect paraphrase may still achieve a high score. BERTScore is used as the primary automatic metric for replacement evaluation.
+
+\subsubsection{Human Evaluation}
+
+Automatic metrics alone are insufficient for assessing replacement quality. Human evaluation is planned for a sample of 40--50 sentences using a \textit{meaning fidelity} scale (1--5):
+\begin{itemize}
+    \item 1 — Incorrect or misleading interpretation;
+    \item 3 — Partially correct (captures some but not all of the intended meaning);
+    \item 5 — Fully meaning-preserving literal restatement.
+\end{itemize}
+Annotators will also be asked to provide their own literal paraphrase when the system's output is rated below 4, enabling qualitative error analysis.
+
+\subsubsection{Multi-Layer Evaluation Framework}
+
+The evaluation protocol is structured as four complementary layers, inspired by the framework proposed in \cite{Surez-Figueroa2024}:
+\begin{enumerate}
+    \item \textbf{Detection accuracy}: span-level precision, recall, and F1 (Section~\ref{sec:eval-framework});
+    \item \textbf{Semantic similarity}: BERTScore and BLEU (supporting/automatic);
+    \item \textbf{Interpretive correctness}: human evaluation of meaning fidelity (primary);
+    \item \textbf{Conceptual grounding}: correctness of source--target metaphor mappings and idiom sense disambiguation (planned).
+\end{enumerate}
 
 \subsection{Large Language Models \& Agentic Systems}
 \begin{itemize}
-    \item Zero-shot, one-shot and few-shot prompting
-    \item Agentic decomposition (planning, reflection, self-verification)
-    \item Observability (LangSmith-style traces)
+    \item Zero-shot, one-shot, and few-shot prompting % TODO: expand
+    \item Agentic decomposition (planning, reflection, self-verification) % TODO: expand
+    \item Observability (LangSmith-style traces) % TODO: expand
 \end{itemize}
 
 \subsection{Literature Review}
