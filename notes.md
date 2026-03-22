@@ -384,3 +384,99 @@ Most figurative language research prioritizes model performance and treats evalu
 - Empirically analyzing the gap between automatic scores and human judgment
 
 This approach is model-agnostic, methodologically rigorous, and well-aligned with current research needs in figurative language processing.
+
+## 09-02-2026
+
+- Met virtually with Mari Carmen, summary:
+ ### Research Progress
+
+- Read approximately 15 papers on metaphor and idiom detection
+- Found that existing approaches include supervised methods and initial attempts with language models, but mostly at zero-shot with older models, indicating room for research
+- Set up Python backend with clients for two datasets: VU Amsterdam Corpus for Metaphors and SemEval Task 2 for idioms
+- Built front-end interface to visualize data and run detection and replacement tasks through an agentic workflow
+
+### Dataset Differences
+
+- VU Amsterdam Corpus identifies metaphors per token but doesn't include replacement alternatives
+- SemEval Task 2 identifies idioms at sentence level and includes correct alternatives
+- Two different evaluation approaches will be needed
+
+### Evaluation Challenges
+
+- Detection task is straightforward to evaluate (accuracy at holistic or token level)
+- Replacement task is more challenging due to semantic equivalence requirements
+- Manual evaluation approach suggested: collect 40-50 adapted sentences from expert annotators who understand the language and simplification
+- Compare automatic adaptations to human-provided ones
+
+### Literature Review Direction
+
+- Current focus on metaphor and idiom detection papers, with fewer papers on replacement due to the complexity
+- Advised to include state-of-the-art review section showing identification papers and limited replacement work to demonstrate research gap
+
+### Collaboration Opportunities
+
+- PhD student Isam is working on benchmarking semantic maintenance (evaluating if different sentences convey the same information)
+- Meeting with Isam to be arranged for next week
+- Potential synergy between metaphor replacement work and Isam's semantic maintenance research
+
+### Next Steps
+
+- [ ]  Set up system for large-scale experiments with standardized reporting and automatic metric generation
+- [ ]  Develop workflow for conducting experiments
+- [ ]  Experiment with prompt engineering (one-shot, few-shot approaches)
+- [ ]  Select 40-50 easier metaphor sentences for manual evaluation by English-speaking colleagues
+- [ ]  Arrange meeting with Isam
+- [ ]  Continue updating code and report repositories
+
+## 13-02-2026
+
+- Sent an email to Isam with the request to meet about semantic maintenance evaluation. 
+
+## 20-02-2026
+
+- Met virtually with Isam.
+- To check out: 
+    - Direct Assesment (DA) method for semantic maintenance evaluation by humans
+    - Human judgement in NLP
+    - RoBERTa
+
+
+## 01-03-2026
+
+- Read 4 papers regarding human and/or automated evaluation in sentence replacement tasks
+- Found more papers on evaluation / assesment. Very interesting. Turns out some researchers have done attempts to adjust existing metrics such as Bertscore, Bleu and SARI such that they are more fitting for either longer pieces of texts, or e.g. the existence of synonyms in the text. 
+- To read: https://aclanthology.org/2025.naacl-long.327/ and https://dl.acm.org/doi/10.1145/3744744. 
+- One idea: using a document similarity metric to evaluate the semantic similarity between the original and the adapted sentence. Sentence-level is difficult, but document-level might be more robust.
+
+## 22-03-2026
+
+- Meeting with Mari Carmen tomorrow. Preparing overview of current system state and results to discuss.
+- **System status:** Fully operational. 19,689 examples ingested (16,202 VU Amsterdam + 3,487 SemEval 2022 Task 2). Four LangGraph workflows: metaphor detection, idiom detection, metaphor detect-then-replace, idiom detect-then-replace. Full evaluation pipeline with F1 (token, span, sentence) and BLEU. Frontend UI with span visualisation, run inspection and multi-run comparison.
+- **Initial metrics (5 examples, Gemini 3 Flash Preview, metaphor detection on VU Amsterdam):** `f1_sentence=0.800`, `f1_token=0.298` (precision=0.250, recall=0.368), `f1_span=0.067` (precision=0.080, recall=0.058). Span F1 is expected to be low due to IoU ≥ 0.5 threshold sensitivity on character offset spans; sentence and token F1 are more informative at this stage.
+- **Gap:** Only 5-example test runs have been verified. Need to run on 100–200 examples per dataset to show meaningful initial results to supervisor.
+- **Replacement prompts:** Currently minimal stubs. Need to be rewritten with structured output, chain-of-thought reasoning, and a 1-shot example before replacement quality can be properly evaluated.
+- **Agenda for Mari Carmen:**
+    - Show larger-scale detection results across both datasets (to be run before meeting)
+    - Discuss replacement quality and current limitations
+    - Plan human annotation study: 40–50 sentences, English-speaking annotators, 1–5 meaning fidelity scale
+    - Discuss BERTScore as automatic metric for replacement evaluation (in addition to BLEU)
+- **Results from larger-scale runs (200 detection, 100 detect-then-replace, google/gemini-3-flash-preview, T=0):**
+
+  | Run | Dataset | Task | F1-sentence | F1-token | F1-span | BLEU |
+  |-----|---------|------|-------------|----------|---------|------|
+  | 17a | VU Amsterdam | Metaphor detection | 0.452 | 0.441 | 0.202 | — |
+  | 17b | SemEval | Idiom detection | 0.655 | — | 0.389 | — |
+  | 17c | VU Amsterdam | Metaphor detect+replace | 0.293 | 0.318 | 0.044 | — |
+  | 17d | SemEval | Idiom detect+replace | 0.750 | — | 0.352 | 0.047 |
+
+- **Observations:**
+    - Idiom detection (SemEval) is stronger than metaphor detection (VU Amsterdam) at all levels. This aligns with expectation: idioms are more discrete, context-local expressions; metaphors are more diffuse (word-by-word annotation in VUAMC is harder to match with character offsets).
+    - Token and span F1 for metaphor detection (VU Amsterdam) are considerably better than the 5-example pilot (f1_token 0.441 vs 0.298), suggesting the earlier run was unrepresentative.
+    - Span F1 for the detect-then-replace runs is much lower than for detection-only — the replacement task may cause the model to shift attention, affecting span localisation.
+    - BLEU for idiom replacement is very low (0.047), consistent with the literature: BLEU penalises valid paraphrases that differ lexically from the gold reference. BERTScore and human evaluation will give a better picture.
+    - Couchbase data is not persisted across container restarts (volume not mounted) — datasets need to be re-ingested each session. Should be fixed.
+- **Completed later on 22-03-2026 (Steps 18–20):**
+    - **Step 18 (BERTScore):** `bert-score` installed; `compute_bertscore()` added to evaluation engine; `bertscore_precision/recall/f1` added to MetricName enum and METRIC_REGISTRY; evaluate endpoint now computes BERTScore for detect-then-replace runs. Verified: BERTScore F1 = 0.847 for run 17d.
+    - **Step 19a (Export endpoint):** `GET /runs/{run_id}/export` added, returns CSV with columns: example_id, text, figurative_expression, predicted_replacement, gold_replacement. Verified on 100-example run.
+    - **Step 20 (Improved replacement prompts):** Both `replace_metaphor.txt` and `replace_idiom.txt` rewritten with chain-of-thought (identify → reason → rewrite) and a 1-shot example. A/B test (20 examples): BLEU 0.047→0.158, BERTScore F1 0.847→0.863 for SemEval idiom replacement.
+- **Report updated:** `system_design.tex`, `background.tex`, `rq1_detection.tex`, `rq3_replacement.tex` all updated with concrete system description, dataset details, evaluation methodology, and experimental results.

@@ -1,21 +1,62 @@
 \section{RQ1: Detection \& Interpretation}
 \textit{To what extent can a zero-/one-shot agentic LLM pipeline accurately detect and interpret idiomatic and metaphorical expressions in context?}
 
-\subsection{Experiments}
+\subsection{Experimental Setup}
+
+All detection experiments use the following configuration:
 \begin{itemize}
-    \item Idioms: SemEval-2022 (detection / idiomaticity) \cite{tayyar-madabushi-etal-2022-semeval}
-    \item Metaphors: VUA (token-level metaphor detection) \cite{vuamsterdammetaphorcorpus}
-    \item Note: Initial prototyping focuses on the detection module as a foundation for subsequent replacement tasks.
-    \item Compare:
-          \begin{itemize}
-              \item Agentic pipeline
-              \item Single-prompt LLM
-              \item Reported supervised benchmarks (from literature)
-          \end{itemize}
+    \item \textbf{Model}: \texttt{google/gemini-3-flash-preview} via OpenRouter;
+    \item \textbf{Temperature}: 0 (greedy decoding, for reproducibility);
+    \item \textbf{Prompt version}: v1 (zero-shot, no few-shot examples);
+    \item \textbf{Subset size}: 200 examples per dataset, sampled from the beginning of each ingested collection.
 \end{itemize}
 
-\subsection{Metrics}
-\begin{itemize}
-    \item Accuracy / F1 (detection)
-    \item Qualitative interpretation correctness
-\end{itemize}
+For metaphor detection, the prompt instructs the model to follow the MIP procedure: identify each word whose contextual meaning contrasts with its most basic, concrete meaning, and return those words verbatim as \texttt{figurative\_expressions}. For idiom detection, the prompt instructs the model to identify multi-word expressions whose combined meaning cannot be derived compositionally.
+
+In both cases, the LLM output is post-processed to extract character-offset spans and derive per-token binary labels (Section~\ref{sec:eval-framework}). These are compared against gold annotations from the respective datasets.
+
+\subsection{Results}
+
+Table~\ref{tab:rq1-results} summarises the detection results for both datasets.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lllllll}
+\hline
+\textbf{Dataset} & \textbf{Task} & \textbf{F1-sent} & \textbf{F1-tok} & \textbf{P-tok} & \textbf{R-tok} & \textbf{F1-span} \\
+\hline
+VU Amsterdam & Metaphor detection & 0.452 & 0.441 & 0.460 & 0.424 & 0.202 \\
+SemEval 2022 & Idiom detection    & 0.655 & ---   & ---   & ---   & 0.389 \\
+\hline
+\end{tabular}
+\caption{Zero-shot detection results (200 examples, \texttt{google/gemini-3-flash-preview}, $T=0$). Token-level metrics are not reported for SemEval, as its gold annotations are span- and sentence-level only. Span precision and recall are available in Table~\ref{tab:rq1-spans}.}
+\label{tab:rq1-results}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lllll}
+\hline
+\textbf{Dataset} & \textbf{Task} & \textbf{P-span} & \textbf{R-span} & \textbf{F1-span} \\
+\hline
+VU Amsterdam & Metaphor detection & 0.244 & 0.191 & 0.202 \\
+SemEval 2022 & Idiom detection    & 0.369 & 0.430 & 0.389 \\
+\hline
+\end{tabular}
+\caption{Span-level detection precision, recall, and F1 (IoU $\geq 0.5$, macro-averaged).}
+\label{tab:rq1-spans}
+\end{table}
+
+\subsection{Analysis}
+
+\paragraph{Idiom detection outperforms metaphor detection at all levels.} Sentence-level F1 is 0.655 for idioms vs.\ 0.452 for metaphors, and span-level F1 is 0.389 vs.\ 0.202. This is consistent with the structural properties of each phenomenon: idioms are discrete, multi-word expressions with clearly delimited boundaries (e.g.\ \textit{keep an eye on}, \textit{spill the beans}), making them more amenable to verbatim extraction and span matching. Metaphors, by contrast, are annotated at the individual token level in the VUAMC, often involving isolated words whose figurative use depends on broader context. A single conceptual metaphor may manifest as multiple separately annotated tokens, making exact span recovery harder.
+
+\paragraph{Span F1 is lower than sentence and token F1 for metaphors.} The span IoU $\geq 0.5$ threshold is sensitive to the mismatch between character offsets derived from LLM verbatim outputs and the gold token boundaries in the VUAMC. A word correctly identified as metaphorical but copied with a slight boundary offset (e.g.\ including punctuation) will fail the IoU threshold. Token F1 (0.441) and sentence F1 (0.452) are therefore more informative metrics for this dataset.
+
+\paragraph{Comparison to supervised benchmarks.} A direct comparison against supervised models reported in the VUAMC and SemEval literature is planned for this chapter. Initial observations suggest that the zero-shot pipeline achieves competitive sentence-level performance on idiom detection, while metaphor token F1 (0.441) is below the best reported supervised results but above naive baselines. % TODO: add supervised baseline numbers from literature.
+
+\subsection{Qualitative Examples}
+
+% TODO: Add 2-3 annotated examples showing correct and incorrect predictions, with span visualisations.
+
+\newpage

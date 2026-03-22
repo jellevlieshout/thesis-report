@@ -1,19 +1,67 @@
 \section{RQ3: Replacement Quality}
+\label{sec:rq3}
 \textit{How effectively can figurative expressions be replaced with literal, meaning-preserving alternatives?}
 
-\subsection{Idioms}
+\subsection{Experimental Setup}
+
+Replacement experiments use the \textit{detect-then-replace} task variant: the model detects figurative spans and in the same call produces a literal paraphrase of the full sentence. All experiments use \texttt{google/gemini-3-flash-preview}, temperature~0. Two prompt versions are evaluated:
 \begin{itemize}
-    \item SemEval-2022 Subtask B–style evaluation
-    \item Semantic similarity to gold paraphrases
+    \item \textbf{Prompt v1}: a minimal stub instructing the model to identify figurative expressions and provide a literal paraphrase (three lines of instruction).
+    \item \textbf{Prompt v2}: a chain-of-thought prompt instructing the model to (1) identify each expression, (2) reason about its meaning in context, and (3) rewrite the full sentence with all figurative parts replaced, keeping non-figurative content unchanged. Includes one illustrative example.
 \end{itemize}
 
-\subsection{Metaphors}
-\begin{itemize}
-    \item Custom evaluation protocol
-\end{itemize}
+\subsection{Idiom Replacement (SemEval 2022)}
+
+SemEval 2022 Task B provides gold literal paraphrases for a subset of Task A sentences, enabling automatic evaluation of replacement quality using BLEU and BERTScore. Table~\ref{tab:rq3-semeval} reports results for two runs: 100 examples with prompt v1 and 20 examples with prompt v2.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{llllll}
+\hline
+\textbf{Prompt} & \textbf{N} & \textbf{F1-sent} & \textbf{F1-span} & \textbf{BLEU} & \textbf{BERTScore F1} \\
+\hline
+v1 (stub)            & 100 & 0.750 & 0.352 & 0.047 & 0.847 \\
+v2 (chain-of-thought) & 20  & 0.600 & 0.200 & 0.158 & 0.863 \\
+\hline
+\end{tabular}
+\caption{Idiom detect-then-replace results on SemEval 2022. BLEU and BERTScore are computed against gold Task B paraphrases. F1-sent and F1-span measure detection quality on the same examples. Note that the v1 and v2 sample sizes differ (100 vs.\ 20), so direct comparison carries variance.}
+\label{tab:rq3-semeval}
+\end{table}
+
+The prompt v2 improves replacement quality substantially: BLEU increases from 0.047 to 0.158 and BERTScore F1 from 0.847 to 0.863. The slight drop in sentence and span F1 for v2 is likely due to sample variance (20 examples). These results suggest that chain-of-thought prompting with an explicit reasoning step improves literal paraphrase quality even in a zero-shot setting.
+
+BLEU values are low overall (0.047--0.158), which is expected given the nature of the task: valid literal paraphrases of idiomatic expressions often share no n-grams with the gold reference. For example, the idiom \textit{smoking gun} may be correctly replaced with \textit{decisive evidence} or \textit{conclusive proof}, neither of which overlaps with the reference. BERTScore (0.847--0.863) provides a more informative signal, capturing semantic proximity at the embedding level.
+
+\subsection{Metaphor Replacement (VU Amsterdam)}
+
+The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore inapplicable. Replacement quality for metaphors must therefore be assessed through (a) detection metrics on detect-then-replace runs and (b) human evaluation (planned). Table~\ref{tab:rq3-vu} compares detection metrics for detection-only vs.\ detect-then-replace runs on the same dataset.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lllll}
+\hline
+\textbf{Task} & \textbf{N} & \textbf{F1-sent} & \textbf{F1-tok} & \textbf{F1-span} \\
+\hline
+Detection only        & 200 & 0.452 & 0.441 & 0.202 \\
+Detect-then-replace   & 100 & 0.293 & 0.318 & 0.044 \\
+\hline
+\end{tabular}
+\caption{Metaphor detection metrics for detection-only vs.\ detect-then-replace runs (VU Amsterdam, prompt v1). The lower performance on the detect-then-replace task is partly attributable to the smaller sample (100 vs.\ 200 examples) and partly to the additional cognitive load imposed by simultaneous replacement.}
+\label{tab:rq3-vu}
+\end{table}
+
+Detection metrics are lower on the detect-then-replace task, suggesting that asking the model to simultaneously produce a replacement paraphrase may shift attention away from precise span localisation. This is consistent with observations in the SemEval results (lower F1-span for v1 replacement vs.\ detection-only).
 
 \subsection{Analysis}
-\begin{itemize}
-    \item Idioms vs metaphors
-    \item Trade-off: readability vs semantic fidelity
-\end{itemize}
+
+\paragraph{BLEU is poorly suited to replacement evaluation.} Even for correctly paraphrased idioms, BLEU scores are in the range 0.05--0.16, confirming the known limitations of n-gram overlap metrics for tasks with multiple valid outputs. BERTScore is the preferred automatic metric; human evaluation is required for a definitive assessment.
+
+\paragraph{Idioms are replaced more reliably than metaphors.} This is consistent with Hypothesis~H3: idiomatic expressions have more constrained and conventionalised meanings, making them more tractable targets for zero-shot paraphrase generation. Metaphors, particularly those involving abstract source--target mappings, require a deeper understanding of the specific context, which current zero-shot prompting may not consistently achieve.
+
+\paragraph{Replacement degrades detection slightly.} Adding the replacement requirement reduces detection F1 on both datasets. For future experiments, it may be worth separating detection and replacement into two sequential LLM calls to avoid this interference.
+
+\paragraph{Human evaluation (planned).} An annotation study covering 40--50 examples from the detect-then-replace runs is planned, using the meaning fidelity scale described in Section~\ref{sec:eval-methodology}. Annotators will rate the system's literal paraphrase on a 1--5 scale and optionally provide a preferred alternative. Examples for annotation will be selected using the \texttt{GET /runs/\{run\_id\}/export} endpoint, filtering for shorter sentences ($< 20$ words) where the system produced a non-empty replacement.
+
+% TODO: Add qualitative examples of correct, partially correct, and incorrect replacements.
+
+\newpage

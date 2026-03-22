@@ -1,28 +1,77 @@
 \section{System Design \& Methodology}
 
-\subsection{Problem formulation}
+\subsection{Problem Formulation}
+
+The core task addressed by this thesis is figurative language adaptation: given a raw English sentence that may contain figurative expressions (idioms or metaphors), produce a literal, meaning-preserving restatement alongside explicit detection annotations.
+More formally, the system accepts a sentence $s$ and outputs:
 \begin{itemize}
-    \item Input: raw text
-    \item Output: literalized, meaning-preserving text + intermediate explanations
-    \item Challenge: Metaphors often encode meaning that cannot be fully literalized without loss; replacing them requires significant nuance and linguistic understanding.
+    \item A set of detected figurative spans $\{(e_i,\, \text{start}_i,\, \text{end}_i)\}$, where each $e_i$ is a verbatim copy of an expression from $s$ with character-offset boundaries;
+    \item A per-token binary label sequence $\mathbf{l} \in \{0,1\}^{|\mathcal{T}(s)|}$ over the whitespace-tokenised form of $s$, derived from the detected spans;
+    \item A brief linguistic explanation of the figurative usage;
+    \item Optionally, a literal paraphrase $\hat{s}$ of the full sentence, with all figurative expressions replaced by meaning-preserving literal alternatives.
 \end{itemize}
 
-\subsection{Agentic pipeline}
+Two task variants are supported: \textit{detection} (spans, labels, and explanation only) and \textit{detect-then-replace} (additionally producing $\hat{s}$). Both are evaluated over two phenomena independently: \textit{metaphors}, benchmarked against the VU Amsterdam Metaphor Corpus \cite{vuamsterdammetaphorcorpus}, and \textit{idioms}, benchmarked against SemEval 2022 Task 2 \cite{tayyar-madabushi-etal-2022-semeval}. A notable challenge is that some metaphors encode meaning that resists full literalisation without loss; replacement decisions therefore require nuanced linguistic understanding beyond surface paraphrase.
+
+\subsection{Agentic Pipeline}
+
+The system is implemented as four LangGraph workflows, one per (phenomenon, task) combination:
 \begin{itemize}
-    \item Figurative span detection:
-    \begin{itemize}
-        \item Input: Raw text (e.g., ``Yesterday it was raining cats and dogs.'')
-        \item Output: JSON structure containing \texttt{metaphor\_spans} (text, character start/end positions, confidence score).
-    \end{itemize}
-    \item Interpretation / explanation
-    \item Literal replacement generation
-    \item Self-verification \& revision
-    \item Self-learning through addition to RAG?
+    \item \texttt{metaphor\_detection\_graph} — detects metaphorical words or phrases, following VUAMC MIP (Metaphor Identification Procedure) guidelines;
+    \item \texttt{idiom\_detection\_graph} — detects multi-word idiomatic expressions, following SemEval 2022 Task 2 annotation conventions;
+    \item \texttt{metaphor\_detect\_then\_replace\_graph} — detects metaphors and produces a literal sentence paraphrase;
+    \item \texttt{idiom\_detect\_then\_replace\_graph} — detects idioms and produces a literal sentence paraphrase.
 \end{itemize}
+
+Each workflow issues a single structured LLM call whose output must conform to the \texttt{TaskOutput} Pydantic schema:
+\begin{itemize}
+    \item \texttt{detection.is\_figurative} (boolean): whether the sentence contains any figurative expression;
+    \item \texttt{detection.figurative\_expressions} (list of strings): verbatim copies of each detected expression, preserving casing and punctuation as they appear in the input text;
+    \item \texttt{detection.explanation} (string): brief linguistic reasoning for the detection decision;
+    \item \texttt{replacement.literal\_paraphrase} (optional string): the complete sentence rewritten with all figurative expressions replaced.
+\end{itemize}
+
+Structured output is enforced via LangChain's \texttt{with\_structured\_output()} interface, which uses JSON-schema-constrained decoding or function-calling depending on the model's capabilities. Outputs violating the schema trigger automatic retries.
+
+Two deterministic post-processing steps follow the LLM call:
+\begin{enumerate}
+    \item \textbf{Span extraction}: each verbatim expression in \texttt{figurative\_expressions} is located in the input sentence by exact string search, with a case-insensitive fallback. Matched positions are converted to \texttt{Span(start, end)} objects with inclusive-start, exclusive-end character offsets. Overlapping spans are merged; all spans are clipped to the sentence boundary.
+    \item \textbf{Token label derivation}: a binary label is assigned to each whitespace-delimited token by testing whether any detected span overlaps the token's character range. This produces a label sequence directly comparable to VUAMC's token-level metaphor annotations.
+\end{enumerate}
+
+\subsection{Infrastructure}
+
+The system is built on the following components:
+\begin{itemize}
+    \item \textbf{Backend}: FastAPI (Python 3.13) on port 3030. Experiment runs are launched asynchronously as background tasks, enabling concurrent execution.
+    \item \textbf{LLM access}: OpenRouter API client wrapping LangChain's \texttt{ChatOpenAI}. The primary model used for all experiments reported here is \texttt{google/gemini-3-flash-preview}, selected for its reliable structured-output compliance. Free-tier alternatives (e.g.\ Gemma 3 12B, Mistral Small 24B) are available for exploratory runs.
+    \item \textbf{Persistence}: Couchbase 7.6 document store with four collections: \texttt{datasets} (gold-annotated examples; 16{,}202 VU Amsterdam + 3{,}487 SemEval = 19{,}689 total), \texttt{runs} (experiment metadata and status), \texttt{predictions} (per-example LLM outputs), and \texttt{evaluations} (computed metrics). Document keys follow a namespaced convention (e.g.\ \texttt{prediction::\{run\_id\}::\{example\_id\}}).
+    \item \textbf{Prompt versioning}: each run records the full prompt text and its SHA-256 hash, enabling exact reproducibility and detection of prompt drift between runs.
+    \item \textbf{Observability}: LangSmith tracing is configured for all LLM invocations, providing post-hoc inspection of model inputs, outputs, token usage, and latency per step. Trace analysis is deferred to Chapter~\ref{sec:rq4}.
+    \item \textbf{Frontend}: a React/TypeScript single-page application with TanStack Query for data fetching, featuring run dashboards, example-level span visualisation with colour-coded gold/predicted overlays, literal replacement diff views, and multi-run metric comparison charts.
+\end{itemize}
+
+\subsection{Evaluation Framework}
+\label{sec:eval-framework}
+
+Five evaluation metrics are computed automatically for each completed run:
+\begin{itemize}
+    \item \textbf{Token F1}: binary precision, recall, and F1 aggregated across all token labels within a run, computed using scikit-learn's \texttt{precision\_recall\_fscore\_support}. Applicable only when gold token-level annotations are available (VU Amsterdam).
+    \item \textbf{Span F1}: macro-averaged precision, recall, and F1 over detected character-offset spans. A predicted span is a true positive if it overlaps any unmatched gold span with Intersection-over-Union (IoU) $\geq 0.5$, enforcing one-to-one matching.
+    \item \textbf{Sentence F1}: binary classification F1, where a sentence is labelled figurative if and only if at least one span is detected, for both gold and predicted.
+    \item \textbf{BLEU}: sentence-level BLEU with NLTK smoothing (method~1) against the gold paraphrase from SemEval Task B. Applicable only to detect-then-replace runs on SemEval.
+    \item \textbf{BERTScore} \cite{zhang2020bertscore}: contextual embedding similarity (RoBERTa model) between predicted and gold replacement sentences, returning precision, recall, and F1. Applicable only to detect-then-replace runs on SemEval.
+\end{itemize}
+
+All metrics are persisted as \texttt{EvaluationData} Couchbase documents and are re-computable on demand via the \texttt{POST /runs/\{run\_id\}/evaluate} endpoint. Section~\ref{sec:eval-methodology} discusses the appropriateness of these metrics for figurative language evaluation in more detail.
 
 \subsection{Baselines}
+
+% TODO: Implement and evaluate monolithic single-prompt baseline and detection-only baseline for RQ2 ablation study.
 \begin{itemize}
-    \item Monolithic single-prompt LLM
-    \item Detection-only prompting
-    \item Naïve paraphrasing
+    \item \textit{Monolithic single-prompt} (to be implemented): a single prompt that requests detection and replacement without intermediate explanation or structured reasoning.
+    \item \textit{Detection-only comparison}: detect-then-replace runs are compared against detection-only runs on the same examples to quantify the effect of the replacement step on detection quality (see Section~\ref{sec:rq3}).
+    \item \textit{Na\"ive paraphrasing} (to be implemented): a baseline that rewrites the sentence without explicit figurative language handling.
 \end{itemize}
+
+\newpage
