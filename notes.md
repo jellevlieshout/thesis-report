@@ -480,3 +480,43 @@ This approach is model-agnostic, methodologically rigorous, and well-aligned wit
     - **Step 19a (Export endpoint):** `GET /runs/{run_id}/export` added, returns CSV with columns: example_id, text, figurative_expression, predicted_replacement, gold_replacement. Verified on 100-example run.
     - **Step 20 (Improved replacement prompts):** Both `replace_metaphor.txt` and `replace_idiom.txt` rewritten with chain-of-thought (identify → reason → rewrite) and a 1-shot example. A/B test (20 examples): BLEU 0.047→0.158, BERTScore F1 0.847→0.863 for SemEval idiom replacement.
 - **Report updated:** `system_design.tex`, `background.tex`, `rq1_detection.tex`, `rq3_replacement.tex` all updated with concrete system description, dataset details, evaluation methodology, and experimental results.
+
+## 23-03-2026
+
+- Met virtually with Mari Carmen. Summary of discussion and decisions:
+
+### Progress Update
+
+- Continued reading evaluation papers; concluded with Isam that there is no well-documented approach to measure replacement quality across language domains.
+- System currently tested with Gemini Flash (fast, inexpensive) at up to 200 samples; 20,000 annotated examples available for larger runs.
+- Using SemEval dataset for idiom detection and replacement (good ground truth); VU Amsterdam annotations are sometimes questionable.
+
+### Evaluation Strategy
+
+- Will calculate all available metrics (BLEU, BERTScore, F1) for baseline comparison.
+- Primary evaluation: direct assessment survey with native English speakers rating replacement quality.
+- Survey responses use a confidence score (0–1 scale) rather than binary judgments.
+- Comparing human ratings with automated metrics will reveal which metrics are relevant for this task.
+
+### Survey Design Decisions
+
+- 8–10 randomly selected replacement samples per respondent to ensure completion.
+- Random sample selection to avoid bias.
+- Target native English speakers; can be conducted anonymously.
+- Use ethics paragraph provided by Mari Carmen.
+- Share draft with Mari Carmen for feedback before distribution.
+- Mari Carmen will help with distribution to native English speakers.
+
+### Challenges Noted
+
+- Metaphor evaluation is nuanced and difficult even for native speakers.
+- Many figurative expressions may not be recognised or understood by all native speakers.
+
+### Action Items
+
+- [ ] Set up open weights model on UPM cluster and connect to system
+- [ ] Run large-scale evaluation with open weights model
+- [ ] Create survey with 8–10 randomly selected replacement samples
+- [ ] Use ethics paragraph provided by Mari Carmen for survey
+- [ ] Share survey draft with Mari Carmen for feedback before distribution
+- [ ] Distribute survey to native English speakers (Mari Carmen will help)
