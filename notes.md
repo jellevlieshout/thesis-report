@@ -514,9 +514,76 @@ This approach is model-agnostic, methodologically rigorous, and well-aligned wit
 
 ### Action Items
 
-- [ ] Set up open weights model on UPM cluster and connect to system
+- [x] Set up open weights model on UPM cluster and connect to system
 - [ ] Run large-scale evaluation with open weights model
 - [ ] Create survey with 8–10 randomly selected replacement samples
 - [ ] Use ethics paragraph provided by Mari Carmen for survey
 - [ ] Share survey draft with Mari Carmen for feedback before distribution
 - [ ] Distribute survey to native English speakers (Mari Carmen will help)
+
+## 30-03-2026
+
+- Started setting up a language model on the UPM cluster (https://138.4.144.36/jupyterhub/user/jelle.vanlieshout/lab).
+- **Hardware available:**
+  - GPU: NVIDIA A100 PCIe 40GB (MIG mode enabled, single slice = full GPU)
+  - CPU: 2× Xeon Gold 6240R (48 cores / 96 threads)
+  - RAM: 188 GB
+  - Disk: 23 GB free on overlay (tight), 47 TB free on NFS home (ideal for model weights)
+  - CUDA 12.4
+- **Model feasibility on 40 GB VRAM:** Llama 3.1 8B Q4 (~5 GB, easy), Llama 3.3 70B Q4 (~40 GB, fits just), DeepSeek R1 70B Q4 (~40 GB, fits just). Sweet spot: Llama 3.3 70B or DeepSeek R1 70B at Q4.
+- **Chose vLLM over Ollama** for inference serving — continuous batching, PagedAttention for better VRAM utilisation, OpenAI-compatible API out of the box, first-class A100 support, proper MIG handling. Ollama would be simpler but lacks batching and has MIG quirks.
+- **Started with a small test model:** Qwen/Qwen2.5-7B-Instruct via vLLM.
+- **Setup issues encountered:**
+  - pip dependency conflicts (numpy 2.2.6 vs tensorflow 2.12.0 / scipy 1.11.1) — resolved by creating a dedicated virtual environment at `/home/jovyan/vllm-env`.
+  - `--user` install failed inside venv — fixed with `pip install --no-user` or using the venv's pip directly.
+  - JupyterHub container quirks: home directory owned by `nobody`, shell config may not be sourced — solved by inlining env vars in the launch command.
+- **Key environment setup:**
+  - `export HF_HOME=/home/jovyan/.cache/huggingface` (cache model weights on NFS)
+  - `export OLLAMA_MODELS=/home/jovyan/ollama-models` (if using Ollama)
+  - Use `VLLM_LOGGING_LEVEL=DEBUG` and `HF_HUB_ENABLE_HF_TRANSFER=0` for verbose output / download progress.
+  - Recommended: pre-download models separately via `huggingface_hub.snapshot_download()` for clean progress bars and resumability.
+- **Networking & public endpoint setup:**
+  - External IP is 138.4.144.35, but traffic routes through a Google load balancer/proxy (`via: 1.1 google`) — likely a Kubernetes pod behind GKE ingress. Directly exposing a port won't work.
+  - Only `wget` available on the machine (no `curl`, `ngrok`, or `cloudflared` pre-installed).
+  - **Cloudflare Tunnel did not work** — the cluster environment blocks outbound Cloudflare tunnel connections.
+  - **`jupyter-server-proxy` also failed** — installed it (both via pip and JupyterHub UI), but the managed JupyterHub ingress only passes through recognised paths; `/proxy/8000/` routes returned 404. No admin access to configure hub-level extensions or ingress rules.
+  - **Settled on ngrok** — outbound connections to ngrok's API are allowed from the pod.
+    - Installed ngrok:
+      ```
+      wget -O /tmp/ngrok.tgz https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+      tar -xf /tmp/ngrok.tgz -C /home/jovyan/
+      ```
+    - Signed up for free ngrok account and configured authtoken.
+    - Running with built-in HTTP basic auth for security:
+      ```
+      nohup /home/jovyan/ngrok http 8000 --basic-auth "jelle:<password>" > /home/jovyan/ngrok.log 2>&1 &
+      ```
+    - Provides a public `https://*.ngrok-free.app` URL proxying to vLLM on port 8000, protected by basic auth.
+    - Retrieve the public URL via ngrok's local API:
+      ```
+      wget -q -O- http://localhost:4040/api/tunnels | python -c "import sys,json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+      ```
+    - Callers authenticate with `Authorization: Basic <base64(jelle:password)>` header.
+- **Startup procedure for the UPM cluster LLM environment:**
+  1. Log in to JupyterHub at https://138.4.144.36/jupyterhub/user/jelle.vanlieshout/lab and open a terminal.
+  2. Activate the venv and start vLLM with the desired model:
+     ```
+     source /home/jovyan/vllm-env/bin/activate
+     HF_HOME=/home/jovyan/.cache/huggingface python -m vllm.entrypoints.openai.api_server \
+       --model Qwen/Qwen2.5-7B-Instruct \
+       --dtype auto \
+       --max-model-len 4096 \
+       --port 8000
+     ```
+  3. In a second terminal, start ngrok with basic auth:
+     ```
+     nohup /home/jovyan/ngrok http 8000 --basic-auth "jelle:<password>" > /home/jovyan/ngrok.log 2>&1 &
+     ```
+  4. Retrieve the public URL:
+     ```
+     wget -q -O- http://localhost:4040/api/tunnels | python -c "import sys,json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+     ```
+  5. The vLLM OpenAI-compatible API is now accessible at the ngrok URL, e.g.: `https://<subdomain>.ngrok-free.dev/v1/models`
+     - Callers must include basic auth: `Authorization: Basic <base64(jelle:<password>)>`
+  - **Note:** The ngrok subdomain changes each time ngrok restarts. The vLLM process must be restarted after a JupyterHub server restart (pod resets kill running processes).
+- **Next:** Verify vLLM serves requests with the test model, then scale up to a 70B model and connect to the thesis experiment system.
