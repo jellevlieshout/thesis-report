@@ -564,4 +564,26 @@ This approach is model-agnostic, methodologically rigorous, and well-aligned wit
       wget -q -O- http://localhost:4040/api/tunnels | python -c "import sys,json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
       ```
     - Callers authenticate with `Authorization: Basic <base64(jelle:password)>` header.
+- **Startup procedure for the UPM cluster LLM environment:**
+  1. Log in to JupyterHub at https://138.4.144.36/jupyterhub/user/jelle.vanlieshout/lab and open a terminal.
+  2. Activate the venv and start vLLM with the desired model:
+     ```
+     source /home/jovyan/vllm-env/bin/activate
+     HF_HOME=/home/jovyan/.cache/huggingface python -m vllm.entrypoints.openai.api_server \
+       --model Qwen/Qwen2.5-7B-Instruct \
+       --dtype auto \
+       --max-model-len 4096 \
+       --port 8000
+     ```
+  3. In a second terminal, start ngrok with basic auth:
+     ```
+     nohup /home/jovyan/ngrok http 8000 --basic-auth "jelle:<password>" > /home/jovyan/ngrok.log 2>&1 &
+     ```
+  4. Retrieve the public URL:
+     ```
+     wget -q -O- http://localhost:4040/api/tunnels | python -c "import sys,json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+     ```
+  5. The vLLM OpenAI-compatible API is now accessible at the ngrok URL, e.g.: `https://<subdomain>.ngrok-free.dev/v1/models`
+     - Callers must include basic auth: `Authorization: Basic <base64(jelle:<password>)>`
+  - **Note:** The ngrok subdomain changes each time ngrok restarts. The vLLM process must be restarted after a JupyterHub server restart (pod resets kill running processes).
 - **Next:** Verify vLLM serves requests with the test model, then scale up to a 70B model and connect to the thesis experiment system.
