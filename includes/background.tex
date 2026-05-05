@@ -49,13 +49,7 @@ Standard automatic metrics are commonly applied to generation and paraphrase tas
 
 \subsubsection{Human Evaluation}
 
-Automatic metrics alone are insufficient for assessing replacement quality. Human evaluation is planned for a sample of 40--50 sentences using a \textit{meaning fidelity} scale (1--5):
-\begin{itemize}
-    \item 1 — Incorrect or misleading interpretation;
-    \item 3 — Partially correct (captures some but not all of the intended meaning);
-    \item 5 — Fully meaning-preserving literal restatement.
-\end{itemize}
-Annotators will also be asked to provide their own literal paraphrase when the system's output is rated below 4, enabling qualitative error analysis.
+Automatic metrics alone are insufficient for assessing figurative-to-literal replacement quality. Recent work in sentence simplification has shown that most automatic metrics correlate only spuriously with human judgement on this class of task \cite{Alva-Manchego2021,Scialom2021}, motivating a primary reliance on human evaluation. The protocol adopted is \textit{Direct Assessment} \cite{Graham2013,Graham2017}, applied to the three-axis rubric (grammaticality, meaning preservation, simplicity) established for sentence simplification by Alva-Manchego et al.\ \cite{Alva-Manchego2020}. Human evaluation is reserved for the open-ended task of replacement, where no single ground truth exists; detection has gold annotations and is evaluated only with the automatic metrics above. The replacement evaluation covers idioms only (SemEval Task B); metaphors are evaluated through detection metrics on detect-then-replace runs (Section~\ref{sec:rq3}). The full survey methodology --- continuous-scale design, standardisation and aggregation, quality control, and three deliberate departures from the original DA specification --- is the subject of Chapter~\ref{ch:methodology}; the survey instantiation (system conditions, source-sentence pool, respondent recruitment) is part of the RQ3 experimental setup (Section~\ref{subsec:rq3-human-eval}).
 
 \subsubsection{Multi-Layer Evaluation Framework}
 

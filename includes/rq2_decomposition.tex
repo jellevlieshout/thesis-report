@@ -1,20 +1,51 @@
 \section{RQ2: Agentic Decomposition}
-\textit{Does agentic decomposition improve figurative language handling compared to monolithic prompting?}
+\label{sec:rq2}
+\textit{Does an explicit agentic decomposition (detection $\to$ explanation $\to$ transformation) improve figurative-language handling compared to monolithic prompt-based LLM approaches?}
 
-\subsection{Experiments}
+\subsection{Experimental Setup}
+
+The RQ2 ablation pairs two task variants on identical inputs and identical model:
 \begin{itemize}
-    \item Same inputs, different architectures
-    \item Ablation:
-          \begin{itemize}
-              \item no explanation step
-              \item no self-verification
-              \item full agentic pipeline
-          \end{itemize}
+    \item \textbf{Agentic detect-then-replace} (this thesis's deliverable): a structured-output prompt that requires the model to (1)~identify each figurative expression verbatim, (2)~reason about its meaning in context, and (3)~rewrite the full sentence with all figurative parts replaced. The schema commits the model to specific spans alongside the paraphrase.
+    \item \textbf{Monolithic single-prompt} (the ablation): a stub prompt asking only for a literal rewrite of the input sentence, with free-text output. No detection step, no explicit reasoning step, no structured output schema.
 \end{itemize}
 
-\subsection{Metrics}
+Both variants run on Llama-3.1-8B-Instruct, $T=0$, on the SemEval 2022 Task A/B idiom subset. The agentic condition uses prompt v2 (chain-of-thought scaffold). The monolithic condition uses a one-paragraph stub.
+
+\subsection{Automatic-Metric Comparison}
+
+Table~\ref{tab:rq2-automatic} compares the two conditions on the 30-source human-evaluation pool (the only subset where all three survey conditions evaluate the same examples; see Section~\ref{subsec:rq3-human-eval}). The automatic metrics for agentic on the deterministic 200-example slice are also reported as context.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{llllll}
+\hline
+\textbf{Condition}              & \textbf{N}   & \textbf{F1-sent} & \textbf{F1-span} & \textbf{BLEU} & \textbf{BERTScore F1} \\
+\hline
+Monolithic (8B, stub)           & 30           & ---              & ---              & 0.035          & 0.857 \\
+Agentic (8B, v2)                & 30           & 0.609            & 0.282            & 0.061          & 0.851 \\
+Agentic (8B, v2)                & 200 (full)   & 0.492            & 0.162            & 0.400          & 0.915 \\
+\hline
+\end{tabular}
+\caption{Monolithic vs.\ agentic on Llama-3.1-8B-Instruct (SemEval idiom). The monolithic condition produces no structured output, so detection-side metrics (F1-sent, F1-span) are not defined. The 200-example agentic row is a sanity check on the 30-example numbers; BLEU/BERTScore variance between the two slices is consistent with sample-shift effects.}
+\label{tab:rq2-automatic}
+\end{table}
+
+\paragraph{Automatic metrics cannot differentiate the two conditions.} On the 30-source pool the agentic system achieves higher BLEU (0.061 vs.\ 0.035) but \emph{lower} BERTScore F1 (0.851 vs.\ 0.857). The two metrics point in opposite directions; their disagreement is itself the point. Sentence-Simplification meta-evaluations~\cite{Alva-Manchego2021,Scialom2021} have shown that BLEU and BERTScore correlate only spuriously with human judgement of meaning preservation and simplicity in figurative-to-literal tasks. The thesis was constructed with this finding in mind: the Direct Assessment human-evaluation survey (Section~\ref{subsec:rq3-human-eval}) is the load-bearing instrument for RQ2, not the auto-metrics.
+
+\paragraph{Failure modes are visible to qualitative inspection.} Spot-checking the 30-source survey items shows characteristic differences. Monolithic outputs frequently produce \emph{whole-sentence rewrites} where multiple non-figurative phrases are also paraphrased (e.g.\ for the source ``\textit{Long story short, I opted for the Letsfit White Noise Machine because it has excellent reviews on Amazon, 14 sounds, a handy nightlight, and it only costs \$20}'', the monolithic system rewrote ``opted for'' $\to$ ``chose'', ``handy nightlight'' $\to$ ``a light that is easy to use'', whereas the agentic system left non-figurative content unchanged and only substituted ``Long story short'' $\to$ ``To summarize''). The agentic structured output anchors the rewrite to the detected span; the monolithic system has no such anchor and freely generalises. Whether the human-evaluation rubric rewards this discipline (under \emph{meaning preservation}) or penalises it (under \emph{simplicity}, where more aggressive simplification scores higher) is the open empirical question that the survey resolves.
+
+\paragraph{Hypothesis status.} Hypothesis H2 (decomposition $>$ monolithic) is therefore \emph{not} supported by automatic metrics on this evaluation. It stands or falls on the rubric-triad ratings in Section~\ref{subsec:rq3-human-eval-results}.
+
+\subsection{Planned Ablations}
+
+The current RQ2 evaluation contrasts only two conditions (full agentic vs.\ monolithic). Two further ablations are planned and discussed as future work in Chapter~\ref{ch:discussion}:
 \begin{itemize}
-    \item Replacement quality (see Chapter 6)
-    \item Error types
-    \item Failure traceability
+    \item \textbf{No-explanation step}: agentic structured output without the chain-of-thought reasoning field, isolating the role of explicit reasoning;
+    \item \textbf{No-self-verification}: agentic pipeline without a final consistency check between the detected span and the produced replacement.
 \end{itemize}
+These ablations require minor schema changes on the existing LangGraph workflow and are deferred to give the human-evaluation survey priority.
+
+\subsection{Failure Traceability}
+
+A secondary benefit of the agentic decomposition is that each error mode is attributable to a specific intermediate step. The structured output records the detected expression, the explanation of its meaning, and the produced replacement; failures localise to one of these. In the monolithic condition, by contrast, errors are ``the rewrite is wrong'' with no further structure. This argument is developed in the observability discussion of Chapter~\ref{ch:discussion}.

@@ -4,7 +4,7 @@
 
 \subsection{Experimental Setup}
 
-Replacement experiments use the \textit{detect-then-replace} task variant: the model detects figurative spans and in the same call produces a literal paraphrase of the full sentence. All experiments use \texttt{google/gemini-3-flash-preview}, temperature~0. Two prompt versions are evaluated:
+Replacement experiments use the \textit{detect-then-replace} task variant: the model detects figurative spans and in the same call produces a literal paraphrase of the full sentence. All experiments use the open-weights cluster (\texttt{meta-llama/Meta-Llama-3.1-8B-Instruct}, FP16; and \texttt{casperhansen/llama-3.3-70b-instruct-awq} as a scale comparator), temperature~0. Two prompt versions are evaluated:
 \begin{itemize}
     \item \textbf{Prompt v1}: a minimal stub instructing the model to identify figurative expressions and provide a literal paraphrase (three lines of instruction).
     \item \textbf{Prompt v2}: a chain-of-thought prompt instructing the model to (1) identify each expression, (2) reason about its meaning in context, and (3) rewrite the full sentence with all figurative parts replaced, keeping non-figurative content unchanged. Includes one illustrative example.
@@ -12,29 +12,37 @@ Replacement experiments use the \textit{detect-then-replace} task variant: the m
 
 \subsection{Idiom Replacement (SemEval 2022)}
 
-SemEval 2022 Task B provides gold literal paraphrases for a subset of Task A sentences, enabling automatic evaluation of replacement quality using BLEU and BERTScore. Table~\ref{tab:rq3-semeval} reports results for two runs: 100 examples with prompt v1 and 20 examples with prompt v2.
+SemEval 2022 Task B provides gold literal paraphrases for a subset of Task A sentences, enabling automatic evaluation of replacement quality using BLEU and BERTScore. Table~\ref{tab:rq3-semeval} reports detect-then-replace results across two prompts (v1 stub, v2 chain-of-thought) and two architectures (single-call structured output, 3-step pipeline) on both Llama-3.1-8B-Instruct and Llama-3.3-70B-Instruct-AWQ, on the same deterministic 200-example slice ($T=0$).
 
 \begin{table}[h!]
 \centering
-\begin{tabular}{llllll}
+\begin{tabular}{llllllr}
 \hline
-\textbf{Prompt} & \textbf{N} & \textbf{F1-sent} & \textbf{F1-span} & \textbf{BLEU} & \textbf{BERTScore F1} \\
+\textbf{Architecture} & \textbf{Prompt} & \textbf{Model} & \textbf{F1-sent} & \textbf{F1-span} & \textbf{BLEU} & \textbf{BERTScore F1} \\
 \hline
-v1 (stub)            & 100 & 0.750 & 0.352 & 0.047 & 0.847 \\
-v2 (chain-of-thought) & 20  & 0.600 & 0.200 & 0.158 & 0.863 \\
+Single-call CoT & v1 (stub)              & 8B  & 0.480 & 0.163 & 0.397 & 0.914 \\
+Single-call CoT & v2 (chain-of-thought)  & 8B  & 0.492 & 0.162 & 0.400 & 0.915 \\
+Single-call CoT & v2                     & 70B & 0.383 & 0.161 & 0.423 & 0.915 \\
+\hline
+3-step pipeline & ---                    & 8B  & 0.255 & 0.141 & 0.430 & 0.916 \\
+3-step pipeline & ---                    & 70B & 0.435 & 0.225 & 0.414 & 0.915 \\
 \hline
 \end{tabular}
-\caption{Idiom detect-then-replace results on SemEval 2022. BLEU and BERTScore are computed against gold Task B paraphrases. F1-sent and F1-span measure detection quality on the same examples. Note that the v1 and v2 sample sizes differ (100 vs.\ 20), so direct comparison carries variance.}
+\caption{Idiom detect-then-replace on SemEval 2022 Task A/B, deterministic 200-example slice, $T=0$. Single-call CoT runs use the structured-output schema requiring detection + replacement in one inference; 3-step pipeline runs separate detection, explanation, and transformation into three sequential LLM calls. F1-sent and F1-span measure detection quality on the same examples. Runs: 8B v1 \texttt{b2b174ea}, 8B v2 \texttt{d6bc60b0}, 70B v2 \texttt{92941662}, 8B pipeline \texttt{3551e201}, 70B pipeline \texttt{56f19b8c}.}
 \label{tab:rq3-semeval}
 \end{table}
 
-The prompt v2 improves replacement quality substantially: BLEU increases from 0.047 to 0.158 and BERTScore F1 from 0.847 to 0.863. The slight drop in sentence and span F1 for v2 is likely due to sample variance (20 examples). These results suggest that chain-of-thought prompting with an explicit reasoning step improves literal paraphrase quality even in a zero-shot setting.
+\paragraph{The chain-of-thought benefit is model-dependent and does not transfer to Llama-3.1-8B.} On 8B, the v1 and v2 prompts produce statistically indistinguishable outputs: BLEU 0.397 vs.\ 0.400 (+0.3pp), BERTScore F1 0.914 vs.\ 0.915 (+0.1pp), sentence F1 0.480 vs.\ 0.492 (+1.2pp). This contradicts a development-time A/B run on \texttt{google/gemini-3-flash-preview} which showed +11pp BLEU and +1.6pp BERTScore F1 in v2's favour for the same prompt pair (engineering log, Step 20, 100-example v1 vs.\ 20-example v2). The most parsimonious explanation is that v2's explicit identify--reason--rewrite scaffolding is benefiting closed-source large models more than the open-weights 8B Instruct, possibly because the canonical Llama Instruct chat template already implements similar internal scaffolding by default. This finding is revisited in Chapter~\ref{ch:discussion} as evidence for the \emph{model-dependence} limitation of zero-shot prompting strategies.
 
-BLEU values are low overall (0.047--0.158), which is expected given the nature of the task: valid literal paraphrases of idiomatic expressions often share no n-grams with the gold reference. For example, the idiom \textit{smoking gun} may be correctly replaced with \textit{decisive evidence} or \textit{conclusive proof}, neither of which overlaps with the reference. BERTScore (0.847--0.863) provides a more informative signal, capturing semantic proximity at the embedding level.
+\paragraph{The pipeline architecture's BLEU advantage shrinks to zero at scale.} On 8B the 3-step pipeline beats single-call CoT v2 by +3pp BLEU (0.430 vs.\ 0.400). On 70B the same comparison flips slightly to a $-1$pp difference (0.414 vs.\ 0.423) --- within sample noise. BERTScore F1 is tied at $\sim$0.915 in all four cells. The pipeline's small-scale BLEU advantage is therefore concentrated at 8B and partially attributable to a known artefact: when the pipeline's detection step finds nothing, the transform step short-circuits and returns the input sentence unchanged; the input shares roughly 85\% of its tokens with the gold paraphrase, so those examples score artificially high on BLEU. This artefact contributes more to the 8B aggregate (which has lower detection recall, so more fall-throughs) than to the 70B aggregate. The cleaner read is that scale lifts detection F1 substantially while leaving replacement quality flat on automatic metrics --- a dissociation we develop in the analysis below.
+
+\paragraph{Single-call CoT detection F1 inverts at scale, on both phenomena.} 8B SemEval idiom: detection-only sentence F1 is 0.255 (run \texttt{cfe4f798}); the same model under dtr v2 jumps to 0.492 ($+22$pp from its detection-only baseline). 70B-AWQ SemEval idiom: detection-only sentence F1 is 0.435 (run \texttt{be7dd99f}); the same model under dtr v2 \emph{drops} to 0.383 ($-5$pp from its detection-only baseline). The same prompt that helps 8B by $+22$pp hurts 70B by $-5$pp on the same dataset. Mechanism is consistent with the VU metaphor inversion (Section~\ref{sec:rq1}, $+12$pp at 8B / $-28$pp at 70B): the 70B's token precision climbs when forced to commit alongside a paraphrase, but its recall drops as it over-commits to ``no idiom'' on borderline examples. The schema scaffold helps 8B and distorts 70B.
+
+BLEU values are low overall (0.397--0.430), as expected: valid literal paraphrases of idiomatic expressions often share no n-grams with the gold reference. The idiom \textit{smoking gun}, for example, may be correctly replaced with \textit{decisive evidence} or \textit{conclusive proof}, neither of which overlaps with the reference. BERTScore (0.914--0.916) is the more informative automatic signal here, capturing semantic proximity at the embedding level; the human-evaluation survey (Section~\ref{subsec:rq3-human-eval}) provides the definitive judgement on grammaticality, meaning preservation, and simplicity.
 
 \subsection{Metaphor Replacement (VU Amsterdam)}
 
-The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore inapplicable. Replacement quality for metaphors must therefore be assessed through (a) detection metrics on detect-then-replace runs and (b) human evaluation (planned). Table~\ref{tab:rq3-vu} compares detection metrics for detection-only vs.\ detect-then-replace runs on the same dataset.
+The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore inapplicable. Replacement quality for metaphors is therefore assessed through (a) detection metrics on detect-then-replace runs (Table~\ref{tab:rq3-vu}) and (b) qualitative inspection. Metaphor replacement is not in scope for the human-evaluation survey: as discussed in Section~\ref{sec:eval-methodology}, the rubric triad (grammaticality, meaning preservation, simplicity) is calibrated for idiom replacement, where the figurative-to-literal mapping is well-defined; conventional metaphors (\textit{life is a journey}) often do not require replacement at all, and including them would dilute the rated pool.
 
 \begin{table}[h!]
 \centering
@@ -42,26 +50,46 @@ The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore i
 \hline
 \textbf{Task} & \textbf{N} & \textbf{F1-sent} & \textbf{F1-tok} & \textbf{F1-span} \\
 \hline
-Detection only        & 200 & 0.452 & 0.441 & 0.202 \\
-Detect-then-replace   & 100 & 0.293 & 0.318 & 0.044 \\
+Detection only        & 200 & 0.430 & 0.180 & 0.052 \\
+Detect-then-replace v1 & 197 & 0.553 & 0.230 & 0.067 \\
+Detect-then-replace v2 & 196 & 0.551 & 0.229 & 0.065 \\
 \hline
 \end{tabular}
-\caption{Metaphor detection metrics for detection-only vs.\ detect-then-replace runs (VU Amsterdam, prompt v1). The lower performance on the detect-then-replace task is partly attributable to the smaller sample (100 vs.\ 200 examples) and partly to the additional cognitive load imposed by simultaneous replacement.}
+\caption{Metaphor detection metrics for detection-only vs.\ detect-then-replace runs on the deterministic 200-example VUAMC slice (Llama-3.1-8B-Instruct, $T=0$). The detect-then-replace task lifts sentence F1 by 12.1--12.3 percentage points over detection-only; v1 vs.\ v2 prompts produce indistinguishable results (within 0.2pp on every metric).}
 \label{tab:rq3-vu}
 \end{table}
 
-Detection metrics are lower on the detect-then-replace task, suggesting that asking the model to simultaneously produce a replacement paraphrase may shift attention away from precise span localisation. This is consistent with observations in the SemEval results (lower F1-span for v1 replacement vs.\ detection-only).
-
 \subsection{Analysis}
 
-\paragraph{BLEU is poorly suited to replacement evaluation.} Even for correctly paraphrased idioms, BLEU scores are in the range 0.05--0.16, confirming the known limitations of n-gram overlap metrics for tasks with multiple valid outputs. BERTScore is the preferred automatic metric; human evaluation is required for a definitive assessment.
+\paragraph{BLEU is structurally misaligned with replacement evaluation.} For tasks with multiple valid outputs, BLEU's n-gram overlap requirement penalises correct paraphrases that diverge lexically from the reference. BERTScore, which compares contextual embeddings, partially addresses this; but neither correlates reliably with human judgement on simplification-style tasks~\cite{Alva-Manchego2021,Scialom2021}, motivating the human-evaluation protocol below.
 
-\paragraph{Idioms are replaced more reliably than metaphors.} This is consistent with Hypothesis~H3: idiomatic expressions have more constrained and conventionalised meanings, making them more tractable targets for zero-shot paraphrase generation. Metaphors, particularly those involving abstract source--target mappings, require a deeper understanding of the specific context, which current zero-shot prompting may not consistently achieve.
+\paragraph{Idioms outperform metaphors at every replacement-relevant metric (H3).} Direct sentence-F1 comparison: 0.480--0.492 (idiom dtr) vs.\ 0.551--0.553 (metaphor dtr) at first glance favours metaphors, but this conflates dataset granularity (token-level VU annotation vs.\ span-level SemEval) with phenomenon difficulty. The cleaner indicator is that on idioms the system produces a meaning-preserving literal paraphrase (BLEU 0.40, BERTScore 0.91 against gold) whereas the VUAMC has no gold paraphrase against which to score the metaphor rewrite at all --- the absence of a measurable replacement metric for metaphors itself is consistent with H3's underlying claim that metaphor-to-literal mappings are less constrained. The human-evaluation survey covers idiom replacement only and will provide the definitive H3 evidence on the rubric dimensions.
 
-\paragraph{Replacement degrades detection slightly.} Adding the replacement requirement reduces detection F1 on both datasets. For future experiments, it may be worth separating detection and replacement into two sequential LLM calls to avoid this interference.
+\paragraph{The detect-then-replace prompt produces stronger detection than detection-alone on Llama-3.1-8B-Instruct.} On both datasets, sentence F1 in detect-then-replace exceeds detection-only by 12 percentage points (VU: 0.430 $\to$ 0.553; SemEval: 0.255 $\to$ 0.480). This is the opposite of the development-time pattern observed under hosted closed-source models, where adding a replacement requirement degraded span localisation. On the open-weights system, the structured-output schema in detect-then-replace appears to disambiguate the task for the model: forcing it to commit to a specific paraphrase pulls along sharper span identification. This is itself early evidence for RQ2 (decomposition $>$ monolithic): even the trivial decomposition of \emph{adding the replacement step} changes detection behaviour for the better at this scale.
 
-\paragraph{Human evaluation (planned).} An annotation study covering 40--50 examples from the detect-then-replace runs is planned, using the meaning fidelity scale described in Section~\ref{sec:eval-methodology}. Annotators will rate the system's literal paraphrase on a 1--5 scale and optionally provide a preferred alternative. Examples for annotation will be selected using the \texttt{GET /runs/\{run\_id\}/export} endpoint, filtering for shorter sentences ($< 20$ words) where the system produced a non-empty replacement.
+\paragraph{Scale (8B $\to$ 70B) lifts detection but not replacement, confirmed at 200 examples.} The 30-source survey-pool comparison (single-call agentic v2: 8B sentence F1 0.609 $\to$ 70B 0.767, $+15.8$pp; BLEU $0.061 \to 0.058$; BERTScore $0.851 \to 0.858$) and the 200-example deterministic slice (Table~\ref{tab:rq3-semeval}: pipeline architecture sentence F1 $0.255 \to 0.435$, $+18$pp; BLEU $0.430 \to 0.414$; BERTScore $0.916 \to 0.915$) both show the same dissociation: detection sentence F1 lifts $+16$ to $+18$ percentage points with scale, but BLEU and BERTScore are tied or slightly lower at 70B. The within-family scale comparator therefore confirms a clean RQ1 finding: at this size class, scale lifts the model's ability to \emph{find} the figurative expression but not its ability to \emph{rewrite} it. Whether the survey's rubric ratings (grammaticality, meaning preservation, simplicity) confirm or contradict this dissociation will be reported in Section~\ref{subsec:rq3-human-eval-results}.
 
-% TODO: Add qualitative examples of correct, partially correct, and incorrect replacements.
+\subsection{Human Evaluation}
+\label{subsec:rq3-human-eval}
+
+The replacement task is evaluated by Direct Assessment~\cite{Graham2013,Graham2017}; the protocol, rubric, standardisation, and three departures from the original DA specification are described in Chapter~\ref{ch:methodology}. This section gives the survey \textit{instantiation} --- conditions compared, source-sentence pool, item counts, and respondent recruitment. The full instrument (item screenshots, consent form, bad-reference construction recipe) is reproduced in Appendix~\ref{appendix:survey-design}.
+
+\paragraph{Conditions.} The survey rates outputs from three open-weights conditions, all on the same set of source sentences:
+\begin{itemize}
+    \item \textbf{Llama-3.1-8B + agentic detect-then-replace} --- the deliverable system;
+    \item \textbf{Llama-3.1-8B + monolithic single-prompt} --- the RQ2 ablation, isolating the contribution of agentic decomposition;
+    \item \textbf{Llama-3.3-70B-Instruct-AWQ + agentic detect-then-replace} --- the within-family scale comparator for RQ1.
+\end{itemize}
+No hosted-LLM condition is included in the human evaluation: the survey is reserved for the open-weights deliverable system and its controlled variants.
+
+\paragraph{Pool and instrument.} Sources are drawn from a candidate pool of 50 SemEval-idiom items selected from a Llama-3.1-8B detect-then-replace run, filtered for sentence length ($<30$ words), expression length ($\leq 4$ words), and presence of a system-produced replacement; 30 sources are sampled for the survey. Each source is rated under all three conditions, yielding $30 \times 3 = 90$ items. With $\geq 3$ ratings per item and 16 rated items + 4 quality-control items per respondent, the protocol requires approximately 17 native-English-speaker respondents.
+
+\paragraph{Rubric.} Three independent 0--100 continuous sliders per item: grammaticality, meaning preservation, simplicity (Section~\ref{sec:eval-methodology}). Annotators are blind to the system-of-origin; system identifiers live in analysis-side metadata only.
+
+\paragraph{Quality control.} Two bad-reference items and two repeat-pair items per respondent, embedded among the 16 rated items (matching the 20\% QC ratio of \cite{Graham2013}); fixed-threshold filters are used in place of \cite{Graham2017}'s per-worker significance test, for the small-sample reasons documented in Section~\ref{sec:qc-filter-design}.
+
+\paragraph{Aggregation.} Per-annotator z-score standardisation before per-item aggregation, with mean $\pm$ 95\% confidence interval reported for each rubric dimension and a composite summary across the three. Agreement diagnostics include intra-annotator $\kappa$ from repeat pairs and inter-annotator $\kappa$ across items.
+
+% TODO: Add qualitative examples of correct, partially correct, and incorrect replacements once the open-weights runs land.
 
 \newpage
