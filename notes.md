@@ -902,3 +902,54 @@ Both phenomena show the same direction: dtr v2's structured-output schema is a +
 - Discussion-chapter prose pass synthesising the three model-dependence findings into the broader argument that *prompt-engineering wins on small or hosted models give an unreliable read on what helps the deliverable system at scale.*
 - Per-respondent forms 2–16 — generate after Mari Carmen sign-off (seed=2..16 deterministic from the assembler script).
 - Pilot timing: send to 1–2 friendly respondents to measure median completion. Decision rule per `Survey/PLAN.md` §7: cut to 16 items per respondent if >25 min; user's email mentions a tighter "10 min" threshold so this may be cut more aggressively.
+
+## 15-05-2026
+
+### Mari Carmen round-1 feedback on the seeded sample MS Form
+
+Mari Carmen reviewed `https://forms.microsoft.com/e/FTdiVdKNqq` (the respondent_01 form sent 2026-05-05) and replied with four points. All four incorporated this session.
+
+1. **Terminology — "simplification" → "easy2read adaptation"**. UPM OEG research-line term, links to https://www.inclusion-europe.eu/easy-to-read/. Updated in the form's intro paragraph (already done in the new PDF Jelle added at `Vault/1 - Thesis/Survey/UPM Idiom Replacement Evaluation.pdf`) and reflected in `Survey/PLAN.md` and `Survey/README.md`.
+2. **Eligibility relaxation — accept ≥10-year residents of English-speaking countries**, not just native speakers. Opens distribution to Mari Carmen's Spanish/Italian colleagues in England. New eligibility question is a 3-way choice with branching: "native English" / "non-native but ≥10 years resident" / "neither (form ends)". Updated `Survey/PLAN.md` §3. Affects the form template — the existing MS Form Q1 ("Are you a native speaker of English? Yes/No") needs replacing.
+3. **Non-mandatory item ratings.** A tired respondent who has rated 12 items should be able to submit a partial form rather than abandoning. Rating fields now `Required = OFF`; consent + eligibility remain `Required = ON`. PLAN.md §3 + §5 updated to handle missing values: per-dimension QC checks, minimum-10-of-20 completion threshold for inclusion, no imputation in aggregation. Affects the form template — every numeric question in the existing MS Form needs `Required` toggled off.
+4. **Ethics paragraph.** Mari Carmen provided the OEG group's standard data-protection paragraph (Spanish version linked at https://oeg.fi.upm.es/protecciondatos.html). Verbatim text added to `Survey/PLAN.md` §3 and to the survey PDF Jelle ingested.
+
+### Item 13/20 — what actually broke
+
+User flagged that respondent_01's item 13 "looks like the same sentence twice". Investigation: it's not a duplicate.
+
+Item 13 in `respondent_01.csv` is `src_18` rendered by `70b_agentic`. The `assemble_survey_items.py:128` design (intentional, decision 22f) sets the form's `displayed_detected_expression` to the **SemEval gold** so all three system conditions on the same source share the same anchor (annotators see the same "detected idiom" regardless of which system produced the replacement). But the SemEval Task A gold for `train_zero_shot.EN.131.21` is contaminated: it lists `"kick the bucket; spill the beans; keep an eye on; end suddenly; run to their homes for shelter"` — the first three are canonical-idiom training examples not present in the sentence at all. Combined with the 70B pipeline correctly returning the input unchanged (because there's no real idiom in this sentence — Mari Carmen's gold-annotation noise here), the rendered form item has (a) hallucinated detection field, (b) unchanged replacement, which collectively look broken to a respondent.
+
+**Fix decision:** drop `src_18` from `selected_sources.csv`. Pool drops from 28 sources → 27 sources × 3 conditions = 81 items in `survey_items.csv`. Math still works (81 / 16 × 3 = ~16 respondents minimum; we're overprovisioning to 25).
+
+Optional follow-up if cluster bring-up is convenient: pick a 28th clean candidate from `survey_candidates_v2.csv` and run 3 conditions for it, restoring the 28-source pool. Not blocking.
+
+The "show gold for fairness across conditions" design decision (`assemble_survey_items.py` docstring) is sound and stays — but it requires gold-cleanliness QC per source before sourcing into the pool. Lesson for future iterations: scan `gold_detected_expression` for suspicious multi-canonical-idiom contamination patterns.
+
+### Survey infrastructure — checked-in deterministic form builder
+
+`respondent_01_form.{md,pdf}` was built in an earlier Claude session via an ad-hoc script not committed. This session: write `e2r-adaptation/scripts/build_respondent_form.py` — deterministic, seed-based. Reads `selected_sources.csv` + `survey_items.csv` + `bad_references_final.csv` from the vault, writes `respondent_NN.csv` + `respondent_NN_form.md`. Filters out `src_18` at load time so it remains in the historical CSVs for traceability. Per-respondent sampling: 16 distinct (source, system) pairs drawn uniformly with system-class balancing (~5-6 per system), 2 of the 16 marked for repeat-pair, 2 additional distinct sources used as bad-references. Position ordering: ≥ 5 items between first and second showing of any repeat pair; bad-refs interleaved.
+
+Run for respondents 1..25 (overprovisioned beyond the 16-minimum). Output to `Vault/1 - Thesis/Survey/respondent_assignments/`. The user manually builds each MS Form from `respondent_NN_form.md`; distribution order matches the contacts list in `respondents.md` (Gary Faulds → respondent_01; Thy Nguyen → respondent_02; …; Shelley Sorkin → respondent_15; 16–25 reserved for Mari Carmen's contacts + drop-off buffer).
+
+### Bibliography — pending Step 23a re-export still open
+
+Mendeley re-export to pick up Graham2013, Graham2017, Alva-Manchego2020, Alva-Manchego2021, Scialom2021 in `mendeley.bib` still pending. Not blocking the survey work but blocks the methodology chapter's citations from resolving.
+
+
+### Survey verification + form-builder upgrade
+
+Comprehensive verification of all conditions the surveys should fulfill (33 conditions across source pool, survey_items, bad_references, per-respondent integrity, coverage, Mari Carmen feedback compliance, determinism). Initial pass: 31/33. The 2 fails were both coverage at N=16: stochastic uniform-random sampling left some (source, system) pairs at 0 ratings (78/81 covered) and many at <3 ratings.
+
+**Upgrade: switched the form-builder to a greedy-batch sampler with rotated quota.** New design in `e2r-adaptation/scripts/build_respondent_form.py`:
+
+1. `build_batch_assignments(pool, max_seed)` — walks seeds 1..max_seed sequentially, maintaining a global coverage counter. For each respondent picks the 16 lowest-coverage (source, system) pairs under the constraints (a) no source repeat per respondent and (b) per-respondent system quota. Tie-breaks via `random.Random(seed*7919 + 17)`. Greedy doesn't look ahead, so the first k respondents in a batch of N>k are byte-identical to a standalone batch of size k — **prefix-stable**.
+
+2. **Rotated 6/5/5 quota.** The "6-slot" system cycles each seed: seed 1 → 8b_agentic gets 6, seed 2 → 8b_monolithic gets 6, seed 3 → 70b_agentic gets 6, repeat. Without rotation the fixed 6/5/5 left 8b_monolithic and 70b_agentic each with 80 ratings across 16 respondents (80/27 = 2.96 avg) — pigeonhole guarantees some pairs at 2. With rotation each system gets ~85 ratings (85/27 = 3.15 avg) and greedy can distribute to **≥3 per pair**.
+
+3. **Per-respondent randomisation** (bad-ref selection from the 11 unused sources, slot layout including bad-ref half-split + repeat-pair gap-≥5, which-2-of-16-to-repeat) still uses `random.Random(seed)` for per-seed independence on those concerns.
+
+Re-verification with 36 conditions (3 new: prefix-stability D1, repeat determinism D2, final-state file count D3): **36/36 PASS**. At N=16: 81/81 pairs covered, distribution tight to {3, 4} only — theoretical floor for 256 ratings / 81 pairs. At N=35: min=6, median=7, max=7.
+
+All 35 forms regenerated (`respondent_01_form.md` through `respondent_35_form.md` + matching `.csv` ledgers). Distribution order matches `respondents.md`: #01 Gary Faulds (redeploys current MS Form), #02-#15 the other personal contacts, #16+ for Mari Carmen's contacts + drop-off buffer.
+
