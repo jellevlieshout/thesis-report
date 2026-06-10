@@ -1,21 +1,118 @@
 \section{Discussion \& Limitations}
 \label{ch:discussion}
 
-% TODO: full prose pass. Below are the load-bearing findings to fold into the discussion narrative.
+% ============================================================================
+% === WRITING GUIDE: Chapter 8 (~6 pages) ===================================
+% ============================================================================
+% JOB: assemble the four model-dependence findings into the
+% structure-over-scale synthesis (8.1), explain where metaphors resist
+% literalisation (8.2), absorb the dissolved RQ4 as a qualitative
+% observability section (8.3), bound every claim (8.4), state H4 as untested
+% with a proposed design (8.5), and collect future work (8.6).
+% This is where the central theme is argued in full AND where its honesty is
+% defended. Write 8.1 immediately after the survey-results sections land.
+% THEME HOOK: open 8.1 with "four independent findings, one pattern"; close
+% the chapter with: "structure over scale is not a claim that decomposition
+% always wins; it is the claim that structure is the only lever whose
+% behaviour this thesis could observe, attribute, and trust."
+% ============================================================================
 
-\subsection{What the Agentic System Can and Cannot Do}
+\subsection{Synthesis: Structure over Scale}
+\label{sec:discussion-synthesis}
 
-% TODO: synthesise from RQ1/RQ2/RQ3 findings — detection ceiling lifts with scale, replacement quality saturates within the open-weights tier; agentic decomposition's value is in failure traceability and structured ablation rather than in raw automatic metrics.
+% --- GUIDE (~1.5 pp, ~800 words; the keystone of the thesis). Build the
+% prose around Table~\ref{tab:model-dependence} below. The four findings:
+%  (i)   v2 chain-of-thought: +11pp BLEU on Gemini Flash, no-op on
+%        Llama-3.1-8B. Prompt gains do not transfer across models.
+%  (ii)  Schema-commitment detection lift inverts at scale: +12/+22pp at 8B
+%        vs -28/-5pp at 70B. Same prompt, same data, opposite sign.
+%  (iii) Pipeline detection is identical to detection-only in all four
+%        model x dataset cells (summary; detail in
+%        Section~\ref{subsec:rq2-pipeline-detection}). Structure's value is
+%        not detection sharpness.
+%  (iv)  Scale does not buy human-perceived replacement quality; the 70B is
+%        rated significantly worse on simplicity (Wilcoxon p=0.026).
+% The argument to make EXPLICITLY (this is the move that keeps the theme
+% honest, since (ii) is itself a structure effect with a negative sign):
+% scale and prompts are UNRELIABLE levers: their gains invert across
+% conditions and automatic metrics cannot even see the dimension that
+% matters. Structure is the lever whose effects are INSPECTABLE and
+% ATTRIBUTABLE: the inversions in (i)-(iii) were only discoverable because
+% explicit decomposition isolated the conditions, and structure's benefit
+% lands on meaning preservation (suggestive, Section
+% ~\ref{subsec:rq2-human-eval-results}) with every failure traceable to a
+% step (8.3). Scope the claim: "decomposition helps where the task is
+% generative and underdetermined (replacement), not where it is
+% discriminative (detection)."
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{p{5.2cm}llp{4.2cm}}
+\hline
+\textbf{Finding} & \textbf{Small / hosted} & \textbf{At scale (70B)} & \textbf{Implication} \\
+\hline
+(i) v2 chain-of-thought prompt & $+11$pp BLEU (Gemini) & no-op at 8B ($+0.3$pp) & prompt gains do not transfer across models \\
+(ii) Schema-commitment detection lift & $+12$pp / $+22$pp (8B, VU/SemEval) & $-28$pp / $-5$pp & prompt gains can invert in sign with scale \\
+(iii) Pipeline detection vs.\ detection-only & identical (3 decimals) & identical (3 decimals) & decomposition does not sharpen detection \\
+(iv) Human-rated replacement quality & 8B agentic: composite $z=0.123$ & 70B agentic: $z=-0.086$; simplicity $p=0.026$ & scale does not buy human-perceived quality \\
+\hline
+\end{tabular}
+\caption{The four model-dependence findings. Each row is an effect that current practice would expect to be stable across models and scales, and is not; jointly they motivate the central claim that explicit task structure and human-grounded evaluation are the reliable levers in this task.}
+\label{tab:model-dependence}
+\end{table}
+
+% TODO(jelle): prose.
 
 \subsection{Where Metaphors Fundamentally Resist Literalisation}
 
-% TODO: discuss the H3 evidence: idioms have constrained, conventionalised meanings that map cleanly to literal paraphrases; metaphors --- particularly novel literary metaphors and conceptual metaphors with abstract source--target mappings --- often encode information that no single literal restatement can preserve. Connect to \cite{Neidlein2020} on conventionality stratification.
+% --- GUIDE (~1 pp, ~500 words). The H3 evidence read conceptually:
+%  (1) Idioms have constrained, conventionalised meanings that map cleanly
+%      to literal paraphrases; SemEval can ship gold paraphrases at all
+%      because that mapping exists.
+%  (2) Metaphors, particularly novel/conceptual ones with abstract
+%      source-target mappings, often encode information no single literal
+%      restatement preserves. The VUAMC's LACK of gold paraphrases is not an
+%      oversight but a symptom: the mapping is underdetermined.
+%  (3) Connect to \cite{Neidlein2020} conventionality stratification:
+%      conventionalised metaphors behave like vocabulary (often need no
+%      rewrite for E2R); novel metaphors are where both detection and
+%      replacement degrade.
+%  (4) Practical consequence: the survey's idiom-only scope (Ch 4) and the
+%      metaphor-track evaluation via detection metrics only; a metaphor
+%      human-eval needs a different instrument (future work 8.6).
+
+% TODO(jelle): prose.
+
+\subsection{Observability and Error Analysis}
+\label{sec:discussion-observability}
+
+% --- GUIDE (~1 pp, ~500 words): absorbs the dissolved RQ4 chapter;
+% explicitly framed as QUALITATIVE (observability was dropped as a top-level
+% RQ; no formal observability metric was evaluated; say so in the first
+% paragraph).
+% Must land:
+%  (1) The failure-traceability argument (from Section 6.5): the structured
+%      output records detected expression, explanation, and replacement;
+%      failures localise to a step. Monolithic errors are just "the rewrite
+%      is wrong."
+%  (2) 1-2 LangSmith trace case studies. Strong candidate: src_05 "poison
+%      pill": the pipeline trace shows detection returned no spans, so the
+%      transform step short-circuited and returned the input unchanged; the
+%      error is attributable to pipeline.detect specifically, and the fix
+%      target (the detection prompt) is identified without touching the
+%      transform step. Contrast: the same failure in the monolithic
+%      condition is indistinguishable from a model choosing not to rewrite.
+%  (3) The methodological payoff, tying back to 8.1: findings (i)-(iii)
+%      were only measurable because decomposition exposed intermediate
+%      state; observability is what made the negative results precise.
+
+% TODO(jelle): prose.
 
 \subsection{Limitations}
 
 \paragraph{Conceptual limits.} Metaphors encoding meaning that cannot be fully literalised; replacement oversimplifying nuance. The choice to scope the human-evaluation survey to idioms only (Section~\ref{sec:eval-methodology}) reflects this limit pragmatically: the rubric triad of grammaticality, meaning preservation, and simplicity is well-defined for the figurative-to-literal mapping in the SemEval idiom set, but breaks down for conventional metaphors that may not require any rewrite at all.
 
-\paragraph{Evaluation limits.} The subjectivity of human evaluation, mitigated by per-annotator z-score standardisation~\cite{Graham2013} and the assessor-intrinsic QC techniques of bad-references and repeat-pairs~\cite{Graham2017}, remains an inherent property of the task. There is no single ground-truth literal paraphrase for any given idiom, and BLEU's structural misalignment with the task (Section~\ref{sec:rq3}) means the survey's rubric-triad ratings are the load-bearing evidence for replacement quality. The \texttt{n}=17 respondent pool, while sized for $\geq 3$ ratings per item, is at the lower end of what Graham 2013 found stable for per-annotator standardisation; this is documented as a deliberate departure in Section~\ref{sec:eval-methodology}.
+\paragraph{Evaluation limits.} The subjectivity of human evaluation, mitigated by per-annotator z-score standardisation~\cite{Graham2013} and the assessor-intrinsic QC techniques of bad-references and repeat-pairs~\cite{Graham2017}, remains an inherent property of the task. There is no single ground-truth literal paraphrase for any given idiom, and BLEU's structural misalignment with the task (Section~\ref{sec:rq3}) means the survey's rubric-triad ratings are the load-bearing evidence for replacement quality. The respondent pool (22 collected, 20 retained after quality control), while sized for $\geq 3$ ratings on 71 of the 81 items, is at the lower end of what Graham 2013 found stable for per-annotator standardisation; this is documented as a deliberate departure in Section~\ref{sec:eval-methodology}. Three of the twenty retained respondents are long-term residents of English-speaking countries rather than native speakers.
 
 \paragraph{Model dependence.} \emph{Findings observed under one model do not necessarily transfer to another, and may invert.} Three instances of this in the thesis, in increasing order of severity:
 
@@ -23,19 +120,47 @@
 
 \textit{(2) The single-call CoT detection lift inverts at scale, confirmed on both phenomena.} On Llama-3.1-8B-Instruct, the dtr v2 prompt's structured-output schema gives a $+12$pp sentence-F1 lift over the model's own detection-only baseline on VU metaphor (0.430 $\to$ 0.554) and a $+22$pp lift on SemEval idiom (0.255 $\to$ 0.492) --- the auxiliary-replacement field forces the model to commit detected spans alongside a paraphrase, scaffolding detection at small scale. On Llama-3.3-70B-Instruct-AWQ, the same prompt gives a $-28$pp sentence-F1 \textit{loss} from detection-only on VU metaphor (0.635 $\to$ 0.351) and a $-5$pp loss on SemEval idiom (0.435 $\to$ 0.383). Both datasets, same direction, same prompt, no other change in conditions: $+12$ to $+22$pp at 8B, $-5$ to $-28$pp at 70B. Mechanism is consistent across phenomena --- the 70B's token-precision climbs in dtr v2 (more selective flagging) while recall drops (over-commits to ``no figurative content'') under the schema commitment. The 70B is calibrated enough at the detection task that the schema constraint, far from scaffolding the decision, distorts it.
 
-\textit{(3) Pipeline.detect $\equiv$ standalone detection prompt to three decimal places, in all 4 of 4 (model $\times$ dataset) cells.} On the deterministic 200-example slice, detection F1 is identical under standalone detection-only and the 3-step pipeline across both scales and both phenomena: VU metaphor 0.430/0.430 at 8B and 0.635/0.635 at 70B-AWQ; SemEval idiom 0.255/0.255 at 8B and 0.435/0.435 at 70B. All seven token-, span-, and sentence-level detection metrics match across runs to three decimals --- not just sentence F1. The single-call CoT's detection lift over both these conditions is therefore attributable to the structured-output schema's commitment scaffold, not to chain-of-thought reasoning content per se. This rules out the most charitable framing of the v1-vs-v2 finding above (``maybe v2 helps in some other way at 8B'') and pins the scale-inversion finding in (2) to the schema mechanism specifically. It also implies that the pipeline architecture is \textit{scale-invariant for detection}: the detection step in the pipeline gets the same F1 the detection prompt would have gotten alone, regardless of whether the model is 8B or 70B; whatever the pipeline architecture buys is in the replacement step's quality, not in detection sharpness. Replacement-side metrics on SemEval idiom support this read: the +3pp BLEU advantage pipeline shows over CoT-single-call at 8B (0.430 vs.\ 0.400) shrinks to zero at 70B (0.414 vs.\ 0.423) --- the pipeline's BLEU advantage is concentrated at small scale, partially attributable to the ``no-detection $\to$ return-input'' fall-through (input shares $\sim$85\% of tokens with gold), and washes out at larger scale where detection succeeds more often.
+\textit{(3) Pipeline detection is architecture-invariant.} As reported in Section~\ref{subsec:rq2-pipeline-detection}, the 3-step pipeline's detection step scores identically to the standalone detection prompt, to three decimal places, in all four (model $\times$ dataset) cells. This pins the single-call CoT's detection lift, and its inversion in (2), to the structured-output schema's commitment mechanism specifically rather than to chain-of-thought content, and implies that whatever the pipeline architecture buys is in the replacement step's quality, not in detection sharpness.
 
 These three findings cohere into a single methodological claim: \emph{prompt-engineering wins published on hosted closed-source models, or validated only on small open-weights, give an unreliable read on what helps the deliverable system at production scale.} The risk of taking such findings at face value is publishing a system that performs well in development against the closed-source iterator but does not actually benefit from those design choices in the deliverable --- and, in the most adversarial case, performs \textit{worse} because the prompt scaffolds were calibrated to the smaller model's failure modes. Tian~2024 (TSI), Gao~2025 (PASS), and Badran~2025 (the sequential SemEval Task~1A pipeline) all report architectural wins on hosted closed-source backbones; the thesis's pipeline ablation is a partial empirical re-validation against an open-weights deliverable, and finds the wins partially preserved on detection-replacement decoupling but \textit{not} preserved as detection improvements at scale.
 
-\paragraph{Scale dependence (within family).} The within-family scale comparison (Llama-3.1-8B vs.\ Llama-3.3-70B-Instruct-AWQ) on the 30-source human-evaluation pool yields a clean dissociation: detection sentence F1 lifts from 0.609 to 0.767 (+15.8pp) and span F1 from 0.282 to 0.578 (+29.6pp), but replacement-side BLEU and BERTScore are essentially flat. Scale at this size class lifts the model's ability to \emph{find} the figurative expression but not to \emph{rewrite} it. The 70B comparator is therefore most defensible as a detection-side ceiling for the deliverable rather than a replacement-side competitor.
+\paragraph{Scale dependence (within family).} The within-family scale comparison (Llama-3.1-8B vs.\ Llama-3.3-70B-Instruct-AWQ) on the survey-pool sources yields a clean dissociation: detection sentence F1 lifts from 0.609 to 0.767 (+15.8pp) and span F1 from 0.282 to 0.578 (+29.6pp), but replacement-side BLEU and BERTScore are essentially flat.
+% TODO(verify): the automatic head-to-head on the survey pool was computed on
+% the 28-source assembly (runs aea60b3d / 460d4b15 / 10366af9); confirm the
+% N for these BLEU/BERTScore/F1 numbers before submission and state it.
+The human evaluation extends the dissociation to perceived quality: the 70B comparator is rated directionally lower on every rubric dimension and significantly lower on simplicity (Wilcoxon $p=0.026$; Section~\ref{subsec:rq3-human-eval-results}). In this setup, scale did not buy, and on simplicity may have cost, human-perceived quality. The 70B comparator is therefore most defensible as a detection-side ceiling for the deliverable rather than a replacement-side competitor.
 
 \paragraph{Scope limits.} Sentence- and MWE-level focus throughout; no discourse-wide figurative-language tracking; primarily English (the FACILE umbrella's Spanish work~\cite{Surez-Figueroa2024} is the natural extension target). The replacement evaluation covers idioms only; metaphor replacement is assessed through detection-side metrics on detect-then-replace runs, not through human-rated rubric scoring.
+
+\subsection{Hypothesis H4: Untested}
+\label{sec:discussion-h4}
+
+% --- GUIDE (~0.5 pp, ~250 words). H4: explicit intermediate explanations
+% correlate positively with the semantic correctness of the final
+% replacement. State plainly:
+%  (1) H4 was NOT tested in this thesis. Reason: testing it requires an
+%      explanation-quality score, and no such instrument was built; the
+%      survey rates the final replacement, not the intermediate explanation.
+%  (2) The raw material exists: every agentic run persists the explanation
+%      alongside detection and replacement (structured output), and the 81
+%      survey items have human meaning-preservation ratings.
+%  (3) Proposed design (future work): rate explanation quality independently
+%      (second DA-style pass or LLM-as-judge with human spot-validation),
+%      then correlate per-item explanation scores with the survey's meaning
+%      scores. Power analysis on n=27 sources first; the small pool is why
+%      this was not bolted on post-hoc.
+
+% TODO(jelle): prose.
 
 \subsection{Future Work}
 
 \begin{itemize}
     \item \textbf{Mixture-of-experts evaluation}: Llama 4 (Scout, Maverick) was excluded from this work because the smallest variant exceeds the 40 GB A100's VRAM. With access to A100 80 GB or H100, the within-family scale comparison could be extended into a within-architecture-class comparison, testing whether the agentic decomposition's value transfers to MoE backbones that have different reasoning-vs-throughput tradeoffs.
     \item \textbf{Decomposition ablations}: the no-explanation and no-self-verification ablations (Section~\ref{sec:rq2}) are deferred from this thesis to keep the human-evaluation survey one-shot; isolating the contribution of each agentic step is the natural next study.
+    \item \textbf{H4 correlation study}: the explanation-quality versus replacement-correctness design sketched in Section~\ref{sec:discussion-h4}, over the persisted structured outputs and the existing survey ratings.
+    \item \textbf{A human-evaluation instrument for metaphor replacement}: the idiom rubric does not transfer (Section~\ref{sec:eval-methodology}); a metaphor instrument would need conventionality stratification and a "no rewrite needed" option before rubric rating.
     \item \textbf{Curriculum-style data augmentation}: \cite{Jia2024} reaches SOTA on metaphor detection with single-step inference at test time after curriculum-augmented fine-tuning. If the open-weights detection ceiling at 8B (sentence F1 0.430 on VU metaphor detection) is judged insufficient for downstream E2R deployment, CDA-style fine-tuning is the next intervention to try before declaring the open-weights tier insufficient.
     \item \textbf{Spanish FACILE integration}: the per-guideline-module pattern of the UPM E2R cluster~\cite{Surez-Figueroa2024,Surez-Figueroa2023} is language-agnostic at the architectural level. Porting the figurative-language replacement module to Spanish is contingent on a Spanish gold-paraphrase dataset; such a dataset does not currently exist for idioms, so the immediate work is dataset creation rather than model adaptation.
 \end{itemize}
+
+\newpage

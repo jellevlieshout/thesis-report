@@ -1,7 +1,52 @@
 \section{Conclusion \& Future Work}
+\label{ch:conclusion}
 
-\begin{itemize}
-    \item Summary of findings
-    \item Implications for NLP accessibility
-    \item Directions: multilinguality, discourse-level metaphors, human-in-the-loop
-\end{itemize}
+% ============================================================================
+% === WRITING GUIDE: Chapter 9 (~2 pages, ~900 words) =======================
+% ============================================================================
+% JOB: one verdict paragraph per RQ with the headline number; contributions
+% recap; theme restated in ONE sentence; pointer to future directions (do
+% not rehash 8.6). Write AFTER the Introduction so the two bookends match.
+% Use the same hedge wording as Ch 6 / Ch 8 (never "significantly better"
+% for RQ2; composite is tied).
+% ============================================================================
+
+\subsection{Answers to the Research Questions}
+% --- GUIDE (~1.25 pp):
+%  RQ1 (detection): partial. Zero-shot detection lags supervised SOTA;
+%    within-family scale lifts sentence F1 +18-20pp (VU 0.430 -> 0.635,
+%    SemEval 0.255 -> 0.435), but the schema-commitment prompt effect
+%    inverts at scale (+12/+22pp at 8B vs -28/-5pp at 70B): scale's gains
+%    are real but end at detection.
+%  RQ2 (decomposition): suggestive support. Automatic metrics are blind
+%    (BLEU and BERTScore disagree in direction); the human evaluation shows
+%    a consistent directional advantage on meaning preservation (+0.31
+%    standardised units, p = 0.06-0.08), a tied composite, and failure
+%    traceability as the structural dividend.
+%  RQ3 (replacement): meaning is preserved (raw 73-82) but text is not
+%    substantially simplified (52-64, the weakest dimension everywhere);
+%    idioms outperform metaphors (H3), whose lack of gold paraphrases is
+%    itself the finding; the 70B is rated significantly worse on simplicity
+%    (p = 0.026): in this setup scale did not buy, and may have cost,
+%    human-perceived quality.
+%  H4: stated, untested, design proposed (Section 8.5).
+
+% TODO(jelle): prose.
+
+\subsection{Contributions and Outlook}
+% --- GUIDE (~0.75 pp): contributions recap (pipeline + adapted DA
+% methodology + transfer findings + 108-alternative by-product dataset);
+% implications for NLP accessibility (the figurative-language module of the
+% FACILE-style per-guideline pattern); one-paragraph outlook (Spanish port,
+% metaphor instrument, H4 study).
+% CLOSING SENTENCE of the thesis: a one-line, past-tense restatement of the
+% central claim, with the evidence counts behind it. Draft to adapt:
+%   "Across two phenomena, two model scales, four prompt designs, and a
+%   20-rater human evaluation, the reliable lever for making figurative
+%   language easy to read was never model size or prompt cleverness: it was
+%   explicit structure, in the system that produced the text and in the
+%   evaluation that judged it."
+
+% TODO(jelle): prose.
+
+\newpage

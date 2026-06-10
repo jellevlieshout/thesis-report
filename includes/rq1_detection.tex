@@ -1,5 +1,20 @@
 \section{RQ1: Detection \& Interpretation}
+\label{sec:rq1}
 \textit{To what extent can a zero-/one-shot agentic LLM pipeline accurately detect and interpret idiomatic and metaphorical expressions in context?}
+
+% ============================================================================
+% === WRITING GUIDE: Chapter 5, RQ1 (~5 pages; ~80% already written) ========
+% ============================================================================
+% JOB: answer RQ1: zero-/one-shot detection lags supervised SOTA, but
+% within-family scale delivers +18-20pp sentence F1 (H1 partially supported).
+% Simultaneously plant the chapter's twist: the schema-commitment prompt
+% effect inverts across scale (the first structure-scale interaction).
+% Remaining work: 5.4 supervised comparison (~400 w + Table T-D below) and
+% 5.5 qualitative examples (~300 w).
+% THEME HOOK: open with "if scale were the answer, detection is where it
+% should show, and it does"; close with "scale's gains end at detection;
+% the next chapter asks whether structure's begin at replacement."
+% ============================================================================
 
 \subsection{Experimental Setup}
 
@@ -42,14 +57,56 @@ SemEval 2022 & 70B-Instruct-AWQ  & \textbf{0.435} & ---   & ---   & ---   & \tex
 
 \paragraph{Span F1 is much lower than sentence and token F1 for metaphors.} The IoU $\geq 0.5$ threshold is sensitive to the mismatch between character offsets derived from LLM verbatim outputs and the gold token boundaries in the VUAMC. A word correctly identified as metaphorical but copied with a slight boundary offset (e.g.\ including punctuation) will fail the IoU threshold. At 8B, token F1 (0.176) and sentence F1 (0.430) are therefore more informative for the metaphor task at this granularity. At 70B, the gap narrows: span F1 climbs to 0.125 (still below token F1 0.262 but markedly better in absolute terms).
 
-\paragraph{Within-family scale lifts detection on both phenomena.} 70B-AWQ delivers a consistent $+18$--$20$ percentage-point lift in sentence F1 over 8B-Instruct, on the same prompt, the same 200-example slice, and the same model family (Table~\ref{tab:rq1-detection-scale}). On VU metaphor, the lift is driven primarily by token-level precision climbing from 0.252 to 0.429 ($+17.7$pp): the larger model is much more selective in flagging metaphorical tokens. Recall improves more modestly (0.135 $\to$ 0.188), suggesting the 70B's gain is not from recovering missing tokens but from suppressing the false positives the 8B over-produces. On SemEval idiom, span F1 climbs from 0.141 to 0.225 ($+8.4$pp). The replacement-side metrics on the 30-source survey-pool comparator (BLEU 0.061 $\to$ 0.058, BERTScore F1 0.851 $\to$ 0.858; reported in Section~\ref{sec:rq3}) are essentially unchanged. This dissociation --- scale tightly tracks detection accuracy but saturates for replacement quality --- recurs in the discussion of model-dependence limits (Chapter~\ref{ch:discussion}).
+\paragraph{Within-family scale lifts detection on both phenomena.} 70B-AWQ delivers a consistent $+18$--$20$ percentage-point lift in sentence F1 over 8B-Instruct, on the same prompt, the same 200-example slice, and the same model family (Table~\ref{tab:rq1-detection-scale}). On VU metaphor, the lift is driven primarily by token-level precision climbing from 0.252 to 0.429 ($+17.7$pp): the larger model is much more selective in flagging metaphorical tokens. Recall improves more modestly (0.135 $\to$ 0.188), suggesting the 70B's gain is not from recovering missing tokens but from suppressing the false positives the 8B over-produces. On SemEval idiom, span F1 climbs from 0.141 to 0.225 ($+8.4$pp). The replacement-side metrics on the survey-pool comparator (BLEU 0.061 $\to$ 0.058, BERTScore F1 0.851 $\to$ 0.858; reported in Section~\ref{sec:rq3}) are essentially unchanged. This dissociation --- scale tightly tracks detection accuracy but saturates for replacement quality --- recurs in the discussion of model-dependence limits (Chapter~\ref{ch:discussion}).
 
 \paragraph{The detect-then-replace prompt lifts detection on 8B but \textit{costs} F1 on 70B --- consistent across both phenomena.} On the same 200-example slice, the structured-output dtr v2 prompt lifts 8B sentence F1 over detection-only by $+12$ to $+22$ percentage points (VU metaphor 0.430 $\to$ 0.554, run \texttt{821c8e59}; SemEval idiom 0.255 $\to$ 0.492, run \texttt{d6bc60b0}). The schema's auxiliary-replacement field forces the model to commit detected spans alongside a paraphrase; that auxiliary commitment scaffolds detection at small scale. At 70B, however, the same prompt \textit{drops} sentence F1 from each model's own detection-only baseline by $-5$ to $-28$ percentage points (VU metaphor 0.635 $\to$ 0.351, run \texttt{df765b22}, $-28$pp; SemEval idiom 0.435 $\to$ 0.383, run \texttt{92941662}, $-5$pp). The 70B's token precision climbs in dtr v2 (becomes more selective) while recall drops --- the model is well-calibrated enough that the schema constraint over-commits to ``no figurative content'' on borderline examples rather than scaffolding the decision. The same prompt, on the same datasets, swings $+12/+22$pp at 8B and $-28/-5$pp at 70B. This is itself an RQ2 signal that we develop in Section~\ref{sec:rq2} and the discussion in Chapter~\ref{ch:discussion}: prompt-engineering wins on small models do not always transfer at scale, and may invert.
 
-\paragraph{Comparison to supervised benchmarks.} % TODO: add supervised baseline numbers from VUAMC and SemEval Task 2 literature; the conventionalised-metaphor caveat from \cite{Neidlein2020} should frame the metaphor comparison.
+\subsection{Comparison to Supervised Benchmarks}
+% --- GUIDE (~0.75 pp, ~400 words). The one remaining LITERATURE LOOKUP task
+% in the thesis: pull supervised SOTA numbers for VUA metaphor detection
+% (e.g.\ from \cite{Neidlein2020} reported ranges, \cite{Jia2024} CDA SOTA)
+% and SemEval-2022 Task 2 Subtask A system papers
+% (\cite{tayyar-madabushi-etal-2022-semeval} baseline + top systems).
+% MANDATORY HEDGE: the 200-example T=0 slice is NOT leaderboard-comparable
+% (different test sets, different splits); frame every comparison as
+% indicative. Fill the caveats column of Table T-D below.
+% Must land:
+%  (1) Supervised systems remain clearly ahead on detection (H1 partial).
+%  (2) \cite{Jia2024} as the supervised-can-win counterpoint to H1.
+%  (3) \cite{Neidlein2020}'s caveat: supervised metaphor-detection scores
+%      partly reflect conventionalised word-sense disambiguation, so the
+%      gap may overstate the competence difference on novel metaphor.
+% FALLBACK if numbers prove hard to anchor: qualitative comparison
+% paragraph citing Neidlein's reported ranges with an explicit
+% comparability disclaimer.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{llllll}
+\hline
+\textbf{Task} & \textbf{System} & \textbf{Metric} & \textbf{Score} & \textbf{This work} & \textbf{Comparability caveats} \\
+\hline
+VU metaphor   & TODO & F1 & TODO & 0.635 (70B, sent) & full test set vs.\ 200-ex.\ slice \\
+SemEval idiom & TODO & F1 & TODO & 0.435 (70B, sent) & zero-shot vs.\ fine-tuned \\
+\hline
+\end{tabular}
+\caption{Indicative comparison of zero-shot detection against supervised systems reported in the literature. \textit{[T-D stub: fill in supervised SOTA rows; numbers are not directly comparable across evaluation setups, see caveats column.]}}
+\label{tab:rq1-supervised}
+\end{table}
+
+% TODO(jelle): prose.
 
 \subsection{Qualitative Examples}
+% --- GUIDE (~0.75 pp, ~300 words): 2-3 annotated examples showing correct
+% and incorrect predictions with span visualisation (a formatted LaTeX box
+% with the gold span and the predicted span highlighted is sufficient; no
+% image needed). Good candidates from the runs: a clean idiom hit, a
+% metaphor boundary-offset miss (correct word, failed IoU: supports the
+% span-F1 analysis above), and a 70B dtr-v2 false negative (over-commitment
+% to "not figurative": supports the inversion analysis).
+% SCHEDULE NOTE: if a writing day slips, this section is on the cut list
+% (fold one example into the Analysis section instead).
 
-% TODO: Add 2-3 annotated examples showing correct and incorrect predictions, with span visualisations.
+% TODO(jelle): examples + prose.
 
 \newpage

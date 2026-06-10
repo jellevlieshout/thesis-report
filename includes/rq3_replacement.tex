@@ -2,6 +2,29 @@
 \label{sec:rq3}
 \textit{How effectively can figurative expressions be replaced with literal, meaning-preserving alternatives?}
 
+% ============================================================================
+% === WRITING GUIDE: Chapter 7, RQ3 (~8 pages; the evidentiary heart) =======
+% ============================================================================
+% JOB: show that automatic replacement metrics are insensitive (BLEU ~0.40,
+% BERTScore ~0.915 across all conditions; metaphors unmeasurable for lack of
+% gold paraphrases, itself H3 evidence), then let the survey deliver what the
+% metrics cannot: systems preserve meaning but fail to simplify, and the 70B
+% is rated significantly WORSE on the E2R-critical dimension.
+% Remaining work: 7.6 Survey Results prose (~1,200 w around the tables
+% below) and 7.7 qualitative examples (~400 w).
+% MANDATORY HEDGES:
+%  - 70B simplicity: "in this setup, scale did not buy, and on simplicity
+%    may have cost, human-perceived quality" (one dimension, one comparison,
+%    20 raters; never "scale hurts quality" unqualified).
+%  - Simplicity is uniformly the weakest dimension (52-64 raw vs 78-85):
+%    the single most E2R-relevant sentence of the thesis is "systems
+%    preserve meaning but do not simplify."
+% THEME HOOK: open: "automatic metrics report near-identical scores for
+% every system in this chapter; everything we learn comes from structured
+% human judgement"; close: "the structured evaluation saw what BERTScore
+% could not: the biggest model produced the least readable output."
+% ============================================================================
+
 \subsection{Experimental Setup}
 
 Replacement experiments use the \textit{detect-then-replace} task variant: the model detects figurative spans and in the same call produces a literal paraphrase of the full sentence. All experiments use the open-weights cluster (\texttt{meta-llama/Meta-Llama-3.1-8B-Instruct}, FP16; and \texttt{casperhansen/llama-3.3-70b-instruct-awq} as a scale comparator), temperature~0. Two prompt versions are evaluated:
@@ -67,7 +90,7 @@ Detect-then-replace v2 & 196 & 0.551 & 0.229 & 0.065 \\
 
 \paragraph{The detect-then-replace prompt produces stronger detection than detection-alone on Llama-3.1-8B-Instruct.} On both datasets, sentence F1 in detect-then-replace exceeds detection-only by 12 percentage points (VU: 0.430 $\to$ 0.553; SemEval: 0.255 $\to$ 0.480). This is the opposite of the development-time pattern observed under hosted closed-source models, where adding a replacement requirement degraded span localisation. On the open-weights system, the structured-output schema in detect-then-replace appears to disambiguate the task for the model: forcing it to commit to a specific paraphrase pulls along sharper span identification. This is itself early evidence for RQ2 (decomposition $>$ monolithic): even the trivial decomposition of \emph{adding the replacement step} changes detection behaviour for the better at this scale.
 
-\paragraph{Scale (8B $\to$ 70B) lifts detection but not replacement, confirmed at 200 examples.} The 30-source survey-pool comparison (single-call agentic v2: 8B sentence F1 0.609 $\to$ 70B 0.767, $+15.8$pp; BLEU $0.061 \to 0.058$; BERTScore $0.851 \to 0.858$) and the 200-example deterministic slice (Table~\ref{tab:rq3-semeval}: pipeline architecture sentence F1 $0.255 \to 0.435$, $+18$pp; BLEU $0.430 \to 0.414$; BERTScore $0.916 \to 0.915$) both show the same dissociation: detection sentence F1 lifts $+16$ to $+18$ percentage points with scale, but BLEU and BERTScore are tied or slightly lower at 70B. The within-family scale comparator therefore confirms a clean RQ1 finding: at this size class, scale lifts the model's ability to \emph{find} the figurative expression but not its ability to \emph{rewrite} it. Whether the survey's rubric ratings (grammaticality, meaning preservation, simplicity) confirm or contradict this dissociation will be reported in Section~\ref{subsec:rq3-human-eval-results}.
+\paragraph{Scale (8B $\to$ 70B) lifts detection but not replacement, confirmed at 200 examples.} The survey-pool comparison (single-call agentic v2: 8B sentence F1 0.609 $\to$ 70B 0.767, $+15.8$pp; BLEU $0.061 \to 0.058$; BERTScore $0.851 \to 0.858$) and the 200-example deterministic slice (Table~\ref{tab:rq3-semeval}: pipeline architecture sentence F1 $0.255 \to 0.435$, $+18$pp; BLEU $0.430 \to 0.414$; BERTScore $0.916 \to 0.915$) both show the same dissociation: detection sentence F1 lifts $+16$ to $+18$ percentage points with scale, but BLEU and BERTScore are tied or slightly lower at 70B. The within-family scale comparator therefore confirms a clean RQ1 finding: at this size class, scale lifts the model's ability to \emph{find} the figurative expression but not its ability to \emph{rewrite} it. Whether the survey's rubric ratings (grammaticality, meaning preservation, simplicity) confirm or contradict this dissociation will be reported in Section~\ref{subsec:rq3-human-eval-results}.
 
 \subsection{Human Evaluation}
 \label{subsec:rq3-human-eval}
@@ -76,20 +99,104 @@ The replacement task is evaluated by Direct Assessment~\cite{Graham2013,Graham20
 
 \paragraph{Conditions.} The survey rates outputs from three open-weights conditions, all on the same set of source sentences:
 \begin{itemize}
-    \item \textbf{Llama-3.1-8B + agentic detect-then-replace} --- the deliverable system;
+    \item \textbf{Llama-3.1-8B + agentic 3-step pipeline} (detect $\to$ explain $\to$ transform) --- the deliverable system;
     \item \textbf{Llama-3.1-8B + monolithic single-prompt} --- the RQ2 ablation, isolating the contribution of agentic decomposition;
-    \item \textbf{Llama-3.3-70B-Instruct-AWQ + agentic detect-then-replace} --- the within-family scale comparator for RQ1.
+    \item \textbf{Llama-3.3-70B-Instruct-AWQ + agentic 3-step pipeline} --- the within-family scale comparator for RQ1.
 \end{itemize}
 No hosted-LLM condition is included in the human evaluation: the survey is reserved for the open-weights deliverable system and its controlled variants.
 
-\paragraph{Pool and instrument.} Sources are drawn from a candidate pool of 50 SemEval-idiom items selected from a Llama-3.1-8B detect-then-replace run, filtered for sentence length ($<30$ words), expression length ($\leq 4$ words), and presence of a system-produced replacement; 30 sources are sampled for the survey. Each source is rated under all three conditions, yielding $30 \times 3 = 90$ items. With $\geq 3$ ratings per item and 16 rated items + 4 quality-control items per respondent, the protocol requires approximately 17 native-English-speaker respondents.
+\paragraph{Pool and instrument.} Sources are drawn from a candidate pool of 50 SemEval-idiom items selected from a Llama-3.1-8B detect-then-replace run, filtered for sentence length ($<30$ words), expression length ($\leq 4$ words), and presence of a system-produced replacement; 30 sources were sampled by stratified random selection. Three sources were subsequently excluded: two during manual bad-reference review (the gold expression was judged literal in context) and one for contaminated gold annotation (the SemEval gold listed canonical idioms not present in the sentence). The final pool is therefore 27 sources, each rated under all three conditions: $27 \times 3 = 81$ items. Each respondent rates 20 items (16 rated + 4 quality-control), system-balanced and position-randomised per respondent; with a target of $\geq 3$ ratings per item this requires at least 16 respondents. Respondents are native English speakers or non-native speakers with 10+ years of residence in an English-speaking country; recruitment statistics are reported with the results (Section~\ref{subsec:rq3-human-eval-results}).
 
 \paragraph{Rubric.} Three independent 0--100 continuous sliders per item: grammaticality, meaning preservation, simplicity (Section~\ref{sec:eval-methodology}). Annotators are blind to the system-of-origin; system identifiers live in analysis-side metadata only.
 
 \paragraph{Quality control.} Two bad-reference items and two repeat-pair items per respondent, embedded among the 16 rated items (matching the 20\% QC ratio of \cite{Graham2013}); fixed-threshold filters are used in place of \cite{Graham2017}'s per-worker significance test, for the small-sample reasons documented in Section~\ref{sec:qc-filter-design}.
 
-\paragraph{Aggregation.} Per-annotator z-score standardisation before per-item aggregation, with mean $\pm$ 95\% confidence interval reported for each rubric dimension and a composite summary across the three. Agreement diagnostics include intra-annotator $\kappa$ from repeat pairs and inter-annotator $\kappa$ across items.
+\paragraph{Aggregation.} Per-annotator z-score standardisation before per-item aggregation, with mean $\pm$ 95\% confidence interval reported for each rubric dimension and a composite summary across the three. Intra-annotator consistency is monitored through the repeat-pair absolute differences (Section~\ref{sec:qc-filter-design}).
 
-% TODO: Add qualitative examples of correct, partially correct, and incorrect replacements once the open-weights runs land.
+\subsection{Survey Results}
+\label{subsec:rq3-human-eval-results}
+
+% --- GUIDE (~2.5 pp, ~1,200 words): the payoff section of the thesis.
+% Structure the prose in four moves:
+%  (1) Response and QC statistics (Table~\ref{tab:rq3-survey-qc}): 22
+%      responses collected (19 native speakers, 3 long-term residents);
+%      2 respondents excluded by the repeat-pair filter (mean |diff| > 25);
+%      no bad-reference flags; 20 respondents kept. Coverage: all 81
+%      (source, system) pairs have >= 2 ratings; 71/81 have >= 3.
+%  (2) Per-system scores (Table~\ref{tab:rq3-survey-results}). Grammar and
+%      meaning are high (78-85 raw) for all systems; simplicity is
+%      uniformly the weakest dimension (52-64). THE headline sentence:
+%      systems preserve meaning but do not simplify. For E2R adaptation
+%      this is the remaining gap, and no automatic metric in Section 7.2
+%      could see it (BERTScore was ~0.915 for everything).
+%  (3) The scale comparison (RQ1 cut): 70B agentic is directionally lower
+%      on every dimension and significantly lower on simplicity (paired by
+%      source, n=27: delta-z = -0.347 vs 8B agentic, Wilcoxon p = 0.026;
+%      t p = 0.075); composite p = 0.066. Apply the mandatory hedge.
+%  (4) The 108 free-text alternative replacements respondents provided:
+%      qualitative signal of what humans do that systems do not (shorten
+%      and restructure, not just substitute). 1-2 examples here; fuller
+%      treatment optional in the Discussion.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lrrr|rrrr}
+\hline
+& \multicolumn{3}{c|}{\textbf{Raw means (0--100)}} & \multicolumn{4}{c}{\textbf{Standardised ($z$)}} \\
+\textbf{System} & \textbf{Gram.} & \textbf{Mean.} & \textbf{Simp.} & \textbf{Gram.} & \textbf{Mean.} & \textbf{Simp.} & \textbf{Comp.} \\
+\hline
+Llama-3.1-8B agentic     & 83.1 & 81.6 & 60.6 & $0.411$ & $0.336$ & $-0.378$ & $0.123$ \\
+Llama-3.1-8B monolithic  & 85.4 & 72.6 & 64.1 & $0.520$ & $0.069$ & $-0.214$ & $0.125$ \\
+Llama-3.3-70B agentic    & 78.4 & 76.4 & 51.9 & $0.253$ & $0.162$ & $-0.674$ & $-0.086$ \\
+\hline
+\end{tabular}
+\caption{Human-evaluation results by system: raw 0--100 means and per-annotator-standardised ($z$) scores per rubric dimension, with the composite as the mean of the three standardised dimensions. 20 respondents after quality control; all 81 (source, system) pairs rated $\geq 2$ times, 71 of 81 rated $\geq 3$ times.}
+\label{tab:rq3-survey-results}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lr}
+\hline
+Responses collected & 22 \\
+\quad native English speakers & 19 \\
+\quad long-term residents (10+ years) & 3 \\
+Excluded: repeat-pair filter (mean $|$diff$|$ $> 25$) & 2 \\
+Excluded: completion filter ($<10$ of 20 items) & 0 \\
+Flagged: bad-reference rule & 0 \\
+Respondents retained & 20 \\
+\hline
+(source, system) pairs with $\geq 3$ ratings & 71 / 81 \\
+(source, system) pairs with $= 2$ ratings & 10 / 81 \\
+Free-text alternative replacements collected & 108 \\
+\hline
+\end{tabular}
+\caption{Survey response and quality-control statistics (filters defined in Section~\ref{sec:qc-filter-design}).}
+\label{tab:rq3-survey-qc}
+\end{table}
+
+% --- FIGURE F-3 (replace placeholder): per-system, per-dimension score
+% distributions (box or violin). Source data: 1 - Thesis/Survey/results/
+% (responses_long.csv, ratings_by_system.png is a draft version).
+\begin{figure}[h!]
+\centering
+\fbox{\parbox[c][6cm][c]{0.9\textwidth}{\centering \textit{[Placeholder F-3: rating distributions per system and rubric dimension]}}}
+\caption{Distribution of standardised ratings per system and rubric dimension. Simplicity is the weakest dimension for every system; the 70B comparator is rated lowest on simplicity.}
+\label{fig:survey-distributions}
+\end{figure}
+
+% TODO(jelle): prose (four moves above).
+
+\subsection{Qualitative Examples}
+% --- GUIDE (~1 pp, ~400 words): correct / partially correct / incorrect
+% replacements from the survey pool, ideally aligned with respondent
+% free-text alternatives to show the system-vs-human gap. Good candidates
+% from the engineering log: src_00 "Long story short" -> "To summarize"
+% (clean hit); src_01 "bear the cross" (8B agentic missed the idiom,
+% substituted within it); src_05 "poison pill" (pipeline detection miss ->
+% input returned unchanged: rated high on grammar/meaning by construction,
+% the honest failure mode of span-anchored systems).
+
+% TODO(jelle): examples + prose.
 
 \newpage

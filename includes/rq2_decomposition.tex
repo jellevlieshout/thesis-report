@@ -2,19 +2,53 @@
 \label{sec:rq2}
 \textit{Does an explicit agentic decomposition (detection $\to$ explanation $\to$ transformation) improve figurative-language handling compared to monolithic prompt-based LLM approaches?}
 
+% ============================================================================
+% === WRITING GUIDE: Chapter 6, RQ2 (~5 pages) ==============================
+% ============================================================================
+% JOB: deliver the H2 verdict this chapter previously deferred. Automatic
+% metrics cannot adjudicate (BLEU and BERTScore point in opposite
+% directions); the human evaluation shows a consistent directional advantage
+% for the agentic system on meaning preservation, a tied composite, and a
+% small monolithic edge on simplicity (n.s.). Concede plainly that
+% decomposition buys nothing in detection (Section 6.4).
+% MANDATORY HEDGE, verbatim here and wherever H2 is judged (Ch 8, Ch 9):
+%   "a consistent directional advantage on meaning preservation
+%   (+0.31 standardised units, p = 0.06-0.08) that approaches but does not
+%   reach conventional significance; we interpret this as suggestive support
+%   for H2, strengthened by convergent qualitative evidence of span-anchored
+%   rewriting, rather than as a confirmed effect."
+% NEVER write "significantly better" for RQ2. NEVER claim composite
+% superiority (composite is tied: z 0.123 vs 0.125).
+% THEME HOOK: open: "this chapter tests the thesis's central lever
+% directly"; close: structure's advantage is real but narrow, on the
+% dimension E2R cares most about preserving, visible only to human eyes.
+% ============================================================================
+
 \subsection{Experimental Setup}
 
 The RQ2 ablation pairs two task variants on identical inputs and identical model:
 \begin{itemize}
-    \item \textbf{Agentic detect-then-replace} (this thesis's deliverable): a structured-output prompt that requires the model to (1)~identify each figurative expression verbatim, (2)~reason about its meaning in context, and (3)~rewrite the full sentence with all figurative parts replaced. The schema commits the model to specific spans alongside the paraphrase.
+    \item \textbf{Agentic 3-step pipeline} (this thesis's deliverable): three sequential LLM calls that (1)~detect each figurative expression verbatim, (2)~explain its meaning in context, and (3)~transform the sentence with all figurative parts replaced, each step with structured output and inspectable intermediate state.
     \item \textbf{Monolithic single-prompt} (the ablation): a stub prompt asking only for a literal rewrite of the input sentence, with free-text output. No detection step, no explicit reasoning step, no structured output schema.
 \end{itemize}
 
-Both variants run on Llama-3.1-8B-Instruct, $T=0$, on the SemEval 2022 Task A/B idiom subset. The agentic condition uses prompt v2 (chain-of-thought scaffold). The monolithic condition uses a one-paragraph stub.
+Both variants run on Llama-3.1-8B-Instruct, $T=0$, on the SemEval 2022 Task A/B idiom subset. The monolithic condition uses a one-paragraph stub.
+% TODO(verify): the human-rated survey conditions are the TRUE 3-step
+% pipeline runs (TODOS.md 22f, 2026-05-05: cond 1 aea60b3d, cond 3 10366af9),
+% NOT the single-call structured-CoT variant. The description above now says
+% so. But the automatic numbers in Table tab:rq2-automatic ("Agentic (8B,
+% v2)" rows, F1 0.609/0.282, BLEU 0.061) predate the pipeline switch and may
+% come from the single-call survey-pool run of 2026-05-04. Re-derive the
+% survey-pool automatic metrics from run aea60b3d (and the monolithic row
+% from 460d4b15) so the table describes the same systems the survey rated.
 
 \subsection{Automatic-Metric Comparison}
 
-Table~\ref{tab:rq2-automatic} compares the two conditions on the 30-source human-evaluation pool (the only subset where all three survey conditions evaluate the same examples; see Section~\ref{subsec:rq3-human-eval}). The automatic metrics for agentic on the deterministic 200-example slice are also reported as context.
+Table~\ref{tab:rq2-automatic} compares the two conditions on the survey-pool sources (the only subset where all three survey conditions evaluate the same examples; see Section~\ref{subsec:rq3-human-eval}). The automatic metrics for agentic on the deterministic 200-example slice are also reported as context.
+% TODO(verify): the table's N column says 30; the final survey-pool assembly
+% was 28 sources (runs aea60b3d / 460d4b15 / 10366af9), of which 27 were
+% human-rated. Re-check which pool these BLEU/BERTScore numbers were computed
+% on and make N consistent before submission.
 
 \begin{table}[h!]
 \centering
@@ -35,9 +69,60 @@ Agentic (8B, v2)                & 200 (full)   & 0.492            & 0.162       
 
 \paragraph{Failure modes are visible to qualitative inspection.} Spot-checking the 30-source survey items shows characteristic differences. Monolithic outputs frequently produce \emph{whole-sentence rewrites} where multiple non-figurative phrases are also paraphrased (e.g.\ for the source ``\textit{Long story short, I opted for the Letsfit White Noise Machine because it has excellent reviews on Amazon, 14 sounds, a handy nightlight, and it only costs \$20}'', the monolithic system rewrote ``opted for'' $\to$ ``chose'', ``handy nightlight'' $\to$ ``a light that is easy to use'', whereas the agentic system left non-figurative content unchanged and only substituted ``Long story short'' $\to$ ``To summarize''). The agentic structured output anchors the rewrite to the detected span; the monolithic system has no such anchor and freely generalises. Whether the human-evaluation rubric rewards this discipline (under \emph{meaning preservation}) or penalises it (under \emph{simplicity}, where more aggressive simplification scores higher) is the open empirical question that the survey resolves.
 
-\paragraph{Hypothesis status.} Hypothesis H2 (decomposition $>$ monolithic) is therefore \emph{not} supported by automatic metrics on this evaluation. It stands or falls on the rubric-triad ratings in Section~\ref{subsec:rq3-human-eval-results}.
+\paragraph{Hypothesis status.} Hypothesis H2 (decomposition $>$ monolithic) is therefore \emph{not} supported by automatic metrics on this evaluation. It stands or falls on the rubric-triad ratings, presented next.
 
-\subsection{Planned Ablations}
+\subsection{Human-Evaluation Results}
+\label{subsec:rq2-human-eval-results}
+
+% --- GUIDE (~1.5 pp, ~700 words): the H2 verdict. The full survey results
+% (response statistics, QC, per-system scores on all three conditions) are
+% reported in Section~\ref{subsec:rq3-human-eval-results}; this section
+% presents the RQ2 cut: the paired agentic-vs-monolithic comparison at 8B.
+% Must land:
+%  (1) Table below: agentic +0.31z on meaning preservation (paired by
+%      source, n=27; t p=0.058, Wilcoxon p=0.082): the mandatory hedge
+%      applies. Raw means: meaning 81.6 vs 72.6 (+9.0 raw points).
+%  (2) Composite tied (z 0.123 vs 0.125): no overall-superiority claim.
+%      Dimension-specific trade-off: monolithic slightly ahead on
+%      grammaticality (85.4 vs 83.1) and simplicity (64.1 vs 60.6), both
+%      n.s.; connect the simplicity edge to the span-anchoring discipline
+%      (the monolithic system rewrites more aggressively, cf.\ the Letsfit
+%      example above).
+%  (3) Interpretation: decomposition buys meaning fidelity at no composite
+%      cost; exactly the trade E2R adaptation wants, since meaning errors
+%      are catastrophic for the target population while insufficient
+%      simplification is merely unhelpful.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lrrrrr}
+\hline
+\textbf{Dimension} & \textbf{Agentic (raw)} & \textbf{Monolithic (raw)} & \textbf{$\Delta z$ (paired)} & \textbf{$t$ $p$} & \textbf{Wilcoxon $p$} \\
+\hline
+Grammaticality        & 83.1 & 85.4 & $-0.086$ & 0.450 & 0.509 \\
+Meaning preservation  & 81.6 & 72.6 & $+0.309$ & 0.058 & 0.082 \\
+Simplicity            & 60.6 & 64.1 & $-0.091$ & 0.611 & 0.485 \\
+\hline
+Composite             & ---  & ---  & $+0.044$ & 0.722 & 0.768 \\
+\hline
+\end{tabular}
+\caption{Agentic vs.\ monolithic (both Llama-3.1-8B) on the human-evaluation survey: raw 0--100 means per dimension and the paired difference in per-annotator-standardised scores ($\Delta z$, agentic $-$ monolithic, paired by source sentence, $n=27$ sources), with paired $t$-test and Wilcoxon signed-rank $p$-values. Composite is the mean of the three standardised dimensions (agentic $z=0.123$, monolithic $z=0.125$).}
+\label{tab:rq2-human-eval}
+\end{table}
+
+% TODO(jelle): prose around the table.
+
+\subsection{Decomposition Does Not Sharpen Detection}
+\label{subsec:rq2-pipeline-detection}
+
+% --- GUIDE (~0.75 pp, ~300 words): the honest concession, promoted from the
+% Discussion to here so it cannot be read as buried. The prose below is
+% moved from the Discussion's model-dependence finding (3) and may be
+% edited freely; the Discussion now keeps only a summary.
+
+On the deterministic 200-example slice, detection F1 is identical under the standalone detection-only prompt and the 3-step pipeline across both scales and both phenomena: VU metaphor 0.430/0.430 at 8B and 0.635/0.635 at 70B-AWQ; SemEval idiom 0.255/0.255 at 8B and 0.435/0.435 at 70B. All seven token-, span-, and sentence-level detection metrics match across runs to three decimal places, not just sentence F1. The pipeline's detection step gets exactly the F1 the detection prompt would have gotten alone, regardless of scale: whatever the pipeline architecture buys, it is not detection sharpness. This also attributes the single-call CoT's detection lift over both of these conditions to the structured-output schema's commitment scaffold rather than to chain-of-thought reasoning content per se, and it implies that decomposition's value, where it exists, must be sought on the replacement side: which is precisely where the human evaluation (Section~\ref{subsec:rq2-human-eval-results}) locates it.
+
+\subsection{Ablations Deferred to Future Work}
 
 The current RQ2 evaluation contrasts only two conditions (full agentic vs.\ monolithic). Two further ablations are planned and discussed as future work in Chapter~\ref{ch:discussion}:
 \begin{itemize}

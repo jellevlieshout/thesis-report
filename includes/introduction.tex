@@ -1,15 +1,94 @@
 \section{Introduction}
+\label{ch:introduction}
 
-\begin{itemize}
-    \item Motivation: figurative language as a barrier to accessibility, simplification, and downstream NLP
-    \item Limitations of supervised, task-specific approaches
-    \item Rise of LLMs and agentic reasoning
-    \item Contributions
-          \begin{itemize}
-              \item Zero/one-shot/few-shot agentic system for figurative language handling
-              \item Unified treatment of idioms and metaphors (is this the case?)
-              \item Empirical evaluation of replacement quality \cite{sample2024}
-          \end{itemize}
-\end{itemize}
+% ============================================================================
+% === WRITING GUIDE: Chapter 1, Introduction (~4 pages, ~1,800 words) =======
+% ============================================================================
+% JOB: establish the "missing E2R guideline" motivation, state the central
+% thesis, present RQ1-RQ3 with hypotheses (H4 flagged untested up front), and
+% list contributions. This chapter carries Mari Carmen's deferred review items
+% "storyline framing" and "FACILE positioning" first.
+%
+% CENTRAL THESIS STATEMENT (recurring thread; open with a version of this):
+%   When LLMs adapt figurative language into Easy-to-Read English, reliable
+%   quality does not come from where current practice looks for it (larger
+%   models, cleverer prompts) but from explicit structure: decomposing the
+%   task into inspectable steps and grounding evaluation in human judgement.
+%   The lever that pays is structure, in both the system and its measurement.
+%
+% WRITE THIS CHAPTER AFTER Discussion 8.1 (per WRITING_PLAN.md schedule),
+% so the framing cannot overstate the evidence.
+% ============================================================================
 
-% TODO: Expand on these points.
+\subsection{Motivation}
+% --- GUIDE (~1.25 pp): figurative language as an accessibility barrier.
+% Must land:
+%  (1) E2R guidelines explicitly prohibit figurative language, but no system
+%      or guideline operationalises HOW to adapt it. Cite the UPM
+%      per-guideline-module pattern: \cite{Surez-Figueroa2023} (morphological
+%      features), Diab 2024 (dialogues), \cite{Surez-Figueroa2024} (FACILE).
+%      This thesis is the figurative-language module of that pattern.
+%  (2) The two-literatures gap: figurative-language NLP detects but never
+%      adapts for accessibility; E2R automates other guidelines but not this
+%      one. Neither community addresses the intersection (developed in Ch 2).
+%  (3) Why LLMs now: supervised detection systems exist but replacement has
+%      no training data and no automatic metric; zero/one-shot LLMs are the
+%      only viable approach for the generative half of the task.
+
+% TODO(jelle): prose.
+
+\subsection{Problem Statement}
+% --- GUIDE (~0.75 pp): state the task (given an English sentence, detect
+% idiomatic/metaphorical expressions and produce a literal, meaning-preserving,
+% easier-to-read restatement) and then the thesis statement paragraph.
+% NOTE: the old bullet "unified treatment of idioms and metaphors" is resolved
+% as PARALLEL treatment under a common architecture: four separate LangGraph
+% workflows, prompts never shared across phenomena. Say "parallel", not
+% "unified" (the implementation deliberately bifurcates).
+
+% TODO(jelle): prose.
+
+\subsection{Research Questions and Hypotheses}
+% --- GUIDE (~1 pp): RQ1-RQ3 verbatim from wiki/thesis/research-questions.md:
+%  RQ1: To what extent can a zero-/one-shot agentic LLM pipeline accurately
+%       detect and interpret idiomatic and metaphorical expressions in
+%       context, compared to established supervised benchmarks?
+%  RQ2: Does an explicit agentic decomposition (detection -> explanation ->
+%       transformation) improve figurative-language handling compared to
+%       monolithic prompt-based LLM approaches?
+%  RQ3: How effectively can an agentic LLM system replace idiomatic and
+%       metaphorical expressions with literal, meaning-preserving
+%       alternatives, and what trade-offs arise between semantic fidelity
+%       and readability?
+% Hypotheses H1-H4. H4 (explanation quality correlates with replacement
+% correctness) MUST be stated here and explicitly flagged as untested in this
+% thesis, with a pointer to the proposed design in the Discussion (8.5).
+% Observability is framed as a design property examined qualitatively in the
+% Discussion, NOT as a fourth RQ.
+
+% TODO(jelle): prose.
+
+\subsection{Contributions}
+% --- GUIDE (~0.5 pp): four concrete contributions:
+%  (1) An agentic open-weights pipeline for figurative-language E2R
+%      adaptation (FastAPI + LangGraph + vLLM; 200+ persisted, reproducible
+%      runs), with a monolithic baseline as designed control.
+%  (2) An adapted Direct Assessment human-evaluation methodology for
+%      figurative-language replacement (Ch 4), with documented departures
+%      from Graham 2013/2017.
+%  (3) Empirical findings on what does and does not transfer: scale lifts
+%      detection but not human-perceived replacement quality; prompt gains
+%      invert across scales; decomposition buys meaning preservation.
+%  (4) A by-product dataset: 108 human-written alternative replacements +
+%      rubric ratings for 81 system outputs.
+
+% TODO(jelle): prose.
+
+\subsection{Document Structure}
+% --- GUIDE (~0.5 pp): one sentence per chapter. Close by framing the three
+% empirical chapters as testing three levers: scale (RQ1), structure (RQ2),
+% and task difficulty / fidelity-readability trade-offs (RQ3).
+
+% TODO(jelle): prose.
+
+\newpage

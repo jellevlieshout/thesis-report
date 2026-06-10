@@ -953,3 +953,66 @@ Re-verification with 36 conditions (3 new: prefix-stability D1, repeat determini
 
 All 35 forms regenerated (`respondent_01_form.md` through `respondent_35_form.md` + matching `.csv` ledgers). Distribution order matches `respondents.md`: #01 Gary Faulds (redeploys current MS Form), #02-#15 the other personal contacts, #16+ for Mari Carmen's contacts + drop-off buffer.
 
+
+## 20-05-2026
+
+### Survey distribution: Wave 1 sent
+
+20 MS Forms built (URLs 1–20). Distribution today:
+
+- **URLs 1–15 sent to personal contacts** (WhatsApp / Messenger). Final assignment: Gary Faulds (#1), Thy Nguyen (#2), Samir Moorhouse (#3), Beth Moorhouse (#4), Filippa Davidsson (#5, Messenger), Aidan Catterall Byrne (#6), Cole Triedman (#7), Tess Devol (#8), Tess' Boyfriend (#9), Emma Raible (#10), Bryn (#11), Dino Hamidovic (#12), Nasim Ghorbani-Elizeh (#13), Tess' Mom (#14), Tess' Mom Boyfriend (#15).
+- **Five names from the original `respondents.md` list moved to backlog (not contacted):** Russell Stadler, Jesse Clemens, Lucy Santerre, Olivia Bailey, Shelley Sorkin. Five new contacts swapped in via Tess's family/friend cluster (slots 8, 9, 11, 14, 15).
+- **URLs 16–20 handed to Mari Carmen** for her long-term-resident colleagues (per 2026-05-15 eligibility relaxation). Anonymous distribution: she picks recipients, we do not track who got which URL, visibility is aggregate response count only via MS Forms backend. Email kept brief, no tracking ask, dropped the "let me know who got what" line per privacy intent.
+- **URL 21 built, assigned to Tess' Dad, sent via WhatsApp.**
+
+Contact-message template saved at `Vault/1 - Thesis/Survey/MESSAGE_CONTACTS.md` (WhatsApp/LinkedIn variants); per-respondent URL registry at `Vault/1 - Thesis/Survey/form_urls.md`; respondent status at `Vault/1 - Thesis/Survey/respondents.md`; Mari Carmen distribution email at `Vault/1 - Thesis/Survey/EMAIL_MARI_CARMEN_DISTRIBUTION.md`.
+
+Wave 1 total addressable: 16 personal contacts (URLs 1–15, 21) + 5 Mari Carmen pool = **21 sent**. Target ≥17 completions. Backlog of 5 + URLs 22–35 pre-built in `respondent_assignments/` available if Wave 2 needed.
+
+Pilot intent: ask 1–2 close contacts to time the run; if completion pushes past 10 min, cut items per respondent and reissue.
+
+
+## 03-06-2026
+
+### Survey responses merged + first analysis (pre Mari Carmen meeting)
+
+22 MS Forms xlsx exports merged and analysed. New scripts in `e2r-adaptation/scripts/`: `merge_survey_responses.py` (xlsx + assignment ledgers → `Survey/results/responses_long.csv`, 440 rows) and `analyze_survey_responses.py` (PLAN §4/§5: QC, per-annotator z-scores, paired RQ comparisons, charts).
+
+- **QC: 20/22 kept.** #1 and #13 dropped on the repeat-pair filter (mean |diff| 31.7 / 30.0 > 25). No bad-ref failures. Partial submissions handled (e.g. #22 rated 11/20 items, passes the ≥10 threshold). §5a bad-ref rule adapted: compared against respondent's own real-item meaning mean (sampler never repeats the bad-ref's source as a real item); documented for the methodology chapter.
+- **Coverage: 71/81 pairs ≥3 ratings, 10 pairs at n=2** after the drops. Form #6 (Aidan) completed per backend but the export file is missing: re-export to recover. Bryn (#11) completed since 06-01. Residents: 3/22 (forms 2, 5, 20), better than the form-pool tracking implied.
+- **Headline numbers (raw means gram/meaning/simp):** 8B agentic 83.1/81.6/60.6 · 8B monolithic 85.4/72.6/64.1 · 70B agentic 78.4/76.4/51.9.
+- **RQ2:** agentic wins meaning preservation (+0.31 z paired by source, p≈0.06–0.08 marginal); monolithic slightly better on grammar/simplicity (n.s.); composite tied. Human-eval resolution of the BLEU-vs-BERTScore disagreement: decomposition buys meaning fidelity at no composite cost.
+- **RQ1:** scale does not improve replacement; 70B significantly worse on simplicity (Wilcoxon p=0.026), marginally worse composite. Fourth model-dependence finding: scale doesn't buy human-perceived quality either.
+- **Simplicity is the weak dimension across all systems** (raw 52–64 vs 78–85 grammaticality): meaning and grammar preserved, but outputs only moderately easier to read.
+- 108 free-text alternative replacements collected (qualitative material for discussion).
+- Meeting prep doc: `Vault/1 - Thesis/Meetings/2026-06-03 Meeting w- Mari Carmen - prep.md` (results + draft-date proposal + storyline/frameworks agenda).
+
+### Mari Carmen meeting (11:15, 12 min): endgame timeline locked
+
+- **Full draft to Mari Carmen Jun 29 → her feedback ~Jul 3 → submission Jul 7 → presentation ~Jul 14 (online slot, via Elena).** Her free reading weeks are Jun 15 and Jun 29; she has a conference the week of Jun 22. Incremental chapters welcome but not promised.
+- **Metaphor drop from human eval accepted** ("explain that in the document, no problem"). **22 responses endorsed as sufficient** given exam season; no resident-stratum chase needed.
+- Survey headline previewed only ("bigger models not necessarily better"); she reads the details in the draft. Storyline/frameworks/§5a items deferred to the draft review.
+- She offered to **review presentation slides** too. Defence: her presential UPM slot may clash with the online slot; Isam as fallback attendee; sessions are public.
+- Everything between now and Jun 29 is report writing: survey results into rq3/rq2 + discussion, then intro + conclusion.
+
+## 10-06-2026
+
+### Writing plan locked: theme, structure, report scaffolding (Claude session)
+
+Full critical pass over the wiki synthesis, the report, and the experiment numbers to pick the thesis's central recurring theme and lock the report structure. Plan documents: `thesis-report/WRITING_PLAN.md` (authoritative) + `% === WRITING GUIDE ===` comment blocks embedded per section in every chapter `.tex` + updated `wiki/thesis/chapter-outline.md` / `research-questions.md`.
+
+**Theme locked: "structure over scale."** Reliable quality in LLM-based figurative-language E2R adaptation comes from explicit task structure (agentic decomposition) and human-grounded evaluation, not from model scale or prompt engineering. Supporting frames: "the missing E2R guideline" (intro) and "the measurement gap" (methodology). All four model-dependence findings, the RQ2 meaning-preservation result, and the 70B simplicity loss feed it. Honesty discipline baked into the guides: structure is the *reliable, inspectable* lever, not the always-winning one (pipeline.detect = detection-only is conceded in a promoted section 6.4; composite tied; mandated hedge wordings for RQ2 marginality and the 70B simplicity finding are in WRITING_PLAN.md and repeated in the chapter guides).
+
+**Structure decisions (with Claude, options weighed):** per-RQ chapters retained (lowest rework risk before Jun 29); **RQ4 dissolved** (chapter deleted, observability becomes Discussion 8.3, qualitative); **H4 stated as untested** in 1.3 with rationale + proposed correlation design in 8.5 (future work).
+
+**Report prep executed (compile clean, 42 pp):**
+- Deleted `rq4_observability.tex` + template orphans (`intro.tex`, `conclusions.tex`, `development.tex`); removed the rq4 input from `main.tex`; fixed the dangling `sec:rq4` ref in `system_design.tex`; added the missing `sec:rq1` label.
+- Survey tables inserted with final numbers from `Survey/results/RESULTS.md`: `tab:rq2-human-eval` (RQ2 paired comparison incl. t/Wilcoxon p), `tab:rq3-survey-results` (raw + z by system), `tab:rq3-survey-qc` (response/QC stats), `tab:model-dependence` (the four-finding synthesis table for 8.1), `tab:rq1-supervised` (stub for the 5.4 lookup).
+- Stale survey numbers fixed everywhere: 30 sources/90 items/~17 respondents to the as-run 27 sources x 3 = 81 items (30 sampled, 2 dropped in bad-ref review, src_18 contamination drop), 22 collected, 20 kept, 71/81 >=3 ratings. Pool-provenance paragraph rewritten in `rq3_replacement.tex`; eligibility wording now includes the 3 long-term residents.
+- `methodology.tex` aligned to the as-run analysis (the 5a deferred item): QC filters now describe completion <10/20, repeat-pair mean |diff| > 25 (drop), bad-ref vs respondent's own real-item meaning mean (flag-only); Williams'-test claim corrected to paired t + Wilcoxon on per-source means; bootstrap-CI claim corrected to Student-t; metaphor-exclusion scoping sentence added to the chapter intro.
+- Figure placeholders that compile: F-1 architecture, F-2 monolithic vs single-call vs 3-step pipeline (the visual of the central contrast), F-3 rating distributions. Report previously had zero content figures.
+- Background reordered: 2.1 figurative language, 2.2 E2R/FACILE (new section, carries the FACILE positioning), 2.3 LLMs/agentic, 2.4 datasets, 2.5 evaluation methodology (SARI wording finalised: not used, reference dependence + redundancy rationale), 2.6 synthesis (replaces the bibentry list).
+
+**Open flags:** `TODO(verify)` in rq2/discussion: the automatic head-to-head on the survey pool says N=30 but the final assembly was 28 sources (runs aea60b3d/460d4b15/10366af9); confirm which pool the BLEU/BERTScore numbers were computed on. The 5.4 supervised-SOTA literature lookup is the only external dependency; start it before the Jun 17 writing start.
+
+**Writing schedule (Jun 17 -> 29, ~800 w/day, no slack day):** 7.6 + 6.3/6.4 -> Discussion 8.1 keystone (send Ch 6-8 to Mari Carmen ~Jun 20; she is at a conference the week of Jun 22) -> Intro + Conclusion -> Background -> 5.4/5.5 + figures -> abstract/resumen/acknowledgements -> read-through -> Jun 29 send. Cut order if slipping: optional figures -> 5.5 examples -> trim 2.1.

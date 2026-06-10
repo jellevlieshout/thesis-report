@@ -1,10 +1,79 @@
 \section{Background \& Related Work}
+\label{ch:background}
+
+% ============================================================================
+% === WRITING GUIDE: Chapter 2 (~8 pages; ~2,500 new words) =================
+% ============================================================================
+% JOB: prove the "two disconnected literatures" claim. Figurative-language
+% NLP is detection-centric and never accessibility-oriented; E2R automates
+% guidelines but has no figurative-language module. End on the measurement
+% gap so that Ch 3 (what to build) and Ch 4 (how to judge it) are both
+% pre-motivated.
+% Sections 2.4 (Datasets) and 2.5 (Evaluation Methodology) are already
+% written; new prose is needed for 2.1, 2.2 (new section), 2.3, and 2.6.
+% All paper summaries live in wiki/thesis/papers/ (Obsidian vault).
+% Drop Pukiene 2024 / Baytelman 2024 unless space allows a one-line mention.
+% THEME HOOK: open with "two literatures, one missing guideline"; close 2.6
+% with: the literature offers structure as a promising lever (Tian, Badran,
+% Gao) and warns that no metric can adjudicate it (Lai & Nissim,
+% Alva-Manchego, Scialom); the next two chapters take both seriously.
+% ============================================================================
 
 \subsection{Figurative Language}
-\begin{itemize}
-    \item Idioms vs metaphors (linguistic + cognitive distinction) % TODO: expand
-    \item Prior work on detection, classification, and simplification % TODO: expand
-\end{itemize}
+% --- GUIDE (~1.5 pp): idioms vs metaphors as linguistic phenomena.
+% Must land:
+%  (1) Working definitions: idioms = conventionalised MWEs whose meaning is
+%      non-compositional; metaphors = cross-domain mappings, identified at
+%      token level via MIP/MIPVU \cite{mipvu}. Conventionality spectrum.
+%  (2) Detection state of the art and its critique: \cite{Neidlein2020}
+%      shows high F-scores mask conventionalised word-sense disambiguation,
+%      not metaphor competence (frames the Ch 5 supervised comparison).
+%  (3) LLM figurative competence is contested: \cite{Ichien2024} (GPT-4
+%      emergent novel-metaphor interpretation) vs \cite{Dmitrijev2024}
+%      (pessimistic, pre-GPT-4) vs \cite{Liu2022} (Fig-QA: above chance,
+%      below human). Reconciliation: scale + task framing.
+%  (4) Generation/adaptation side is thin: \cite{Lai2024} survey shows
+%      evaluation is the bottleneck of figurative-language generation.
+
+% TODO(jelle): prose.
+
+\subsection{Easy-to-Read and Cognitive Accessibility}
+% --- GUIDE (~1.5 pp): NEW SECTION, carries the FACILE positioning
+% (Mari Carmen's deferred review item).
+% Must land:
+%  (1) E2R guidelines and their target populations; figurative language is
+%      explicitly discouraged by E2R guidance, yet no guideline says how to
+%      replace it: the missing module.
+%  (2) The UPM per-guideline-module pattern: \cite{Surez-Figueroa2023}
+%      (-mente adverbs, superlatives), \cite{Diab2024} (dialogue
+%      conversion), \cite{Surez-Figueroa2024} (FACILE: assess + transform
+%      architecture). Each module automates ONE guideline and validates with
+%      the target population.
+%  (3) Position this thesis as the figurative-language module of that
+%      pattern, in English, with the Spanish port as future work (8.6).
+%  (4) E2R vs generic simplification: distinct goals; rubric implications
+%      (simplicity dimension is the E2R-critical one; pays off in Ch 7).
+
+% TODO(jelle): prose.
+
+\subsection{Large Language Models \& Agentic Systems}
+% --- GUIDE (~1.5 pp):
+% Must land:
+%  (1) Zero/one/few-shot prompting; structured output; chain-of-thought.
+%  (2) Decomposition precedents that make H2 a motivated hypothesis, not a
+%      hunch: \cite{Tian2024} (theory-guided multi-step scaffolding beats
+%      vanilla prompting on metaphor), \cite{Badran2025} (SemEval-2025
+%      three-stage pipeline > monolithic on idioms), \cite{Gao2025} (PASS
+%      paraphrase + self-check decomposition). Optionally \cite{Hayashi2025}
+%      (context augmentation) as a related scaffolding pattern.
+%  (3) The counterpoint: \cite{Jia2024} reaches SOTA metaphor detection with
+%      supervised curriculum fine-tuning (supervised can still win; H1
+%      cannot be assumed).
+%  (4) Observability: multi-step systems expose intermediate state (traces),
+%      monolithic prompting does not. One paragraph; examined qualitatively
+%      in the Discussion (Section~\ref{sec:discussion-observability}).
+
+% TODO(jelle): prose.
 
 \subsection{Datasets}
 
@@ -26,7 +95,14 @@ SemEval-2022 Task 2 \cite{tayyar-madabushi-etal-2022-semeval} is a shared task o
 
 The English partition contains 3{,}487 sentences after filtering and joining Tasks A and B. Gold paraphrases from Task B are stored alongside each example and used as references for BLEU and BERTScore evaluation. Unlike the VUAMC, SemEval 2022 Task 2 is evaluated at the sentence and span level, with no per-token labels.
 
-\subsubsection{Supporting Datasets (Planned)}
+\subsubsection{Other Figurative-Language Datasets}
+% --- GUIDE (~0.25 pp): these were surveyed but NOT used in any experiment.
+% Compress to one short prose paragraph ("other corpora considered and why
+% the two above were selected"), not a "(Planned)" list: nothing is planned
+% anymore. MAGPIE \cite{magpie} (idiom robustness), TroFi \cite{trofi} and
+% MOH/MOH-X \cite{moh} (verb metaphor), MetaNet (conceptual grounding).
+% Selection rationale: VUAMC = token-level gold + scale; SemEval = the only
+% dataset with gold replacement paraphrases, which the thesis task requires.
 \begin{itemize}
     \item MAGPIE \cite{magpie}: idiom interpretation robustness (qualitative / stress testing)
     \item TroFi \cite{trofi}: verb metaphor detection (focused evaluation)
@@ -43,7 +119,7 @@ Standard automatic metrics are commonly applied to generation and paraphrase tas
 
 \paragraph{BLEU.} BLEU measures n-gram overlap between a system output and one or more reference texts~\cite{papineni2002bleu}. It is precision-oriented and applies a brevity penalty. For figurative language replacement, BLEU is severely misaligned: literal paraphrases of idiomatic expressions intentionally avoid lexical overlap with the gold reference, and multiple semantically equivalent paraphrases may share no surface n-grams. BLEU is retained here primarily as a baseline point of comparison, but its low values should not be interpreted as evidence of poor replacement quality.
 
-\paragraph{SARI.} SARI decomposes quality into Add, Delete, and Keep operations relative to the input and references, and was originally designed for text simplification \cite{xu2016sari}. Figurative-to-literal transformation closely resembles simplification (replacing opaque expressions with transparent ones), making SARI conceptually well-motivated. Its practical limitation is reference dependence; it is not yet implemented but is under consideration.
+\paragraph{SARI.} SARI decomposes quality into Add, Delete, and Keep operations relative to the input and references, and was originally designed for text simplification \cite{xu2016sari}. Figurative-to-literal transformation closely resembles simplification (replacing opaque expressions with transparent ones), making SARI conceptually well-motivated. It is nevertheless not used in this thesis: its reference dependence makes it inapplicable to the metaphor track (the VUAMC has no gold paraphrases), and on the idiom track it would be redundant with the human evaluation, which is the load-bearing instrument for replacement quality.
 
 \paragraph{BERTScore.} BERTScore computes contextual token-embedding similarity between generated and reference texts using a pre-trained language model (RoBERTa in this work), enabling soft alignment rather than exact string matching \cite{zhang2020bertscore}. This makes it more robust to paraphrase variation than BLEU. However, high BERTScore does not guarantee correct interpretation: a plausible but semantically incorrect paraphrase may still achieve a high score. BERTScore is used as the primary automatic metric for replacement evaluation.
 
@@ -61,22 +137,23 @@ The evaluation protocol is structured as four complementary layers, inspired by 
     \item \textbf{Conceptual grounding}: correctness of source--target metaphor mappings and idiom sense disambiguation (planned).
 \end{enumerate}
 
-\subsection{Large Language Models \& Agentic Systems}
-\begin{itemize}
-    \item Zero-shot, one-shot, and few-shot prompting % TODO: expand
-    \item Agentic decomposition (planning, reflection, self-verification) % TODO: expand
-    \item Observability (LangSmith-style traces) % TODO: expand
-\end{itemize}
+\subsection{Synthesis: The Gap This Thesis Fills}
+% --- GUIDE (~0.5 pp): NEW SECTION replacing the old "Literature Review"
+% citation list (all of those papers are now cited in 2.1-2.3 above).
+% Must land, in ~3 paragraphs:
+%  (1) The coverage gap: the figurative-language cluster and the E2R cluster
+%      do not intersect; no prior work treats figurative-language adaptation
+%      as an E2R guideline module. That intersection is the contribution.
+%  (2) The method bet: decomposition precedents (Tian, Badran, Gao) all
+%      report wins on hosted closed-source backbones; whether they hold on
+%      an open-weights deliverable is exactly what RQ2 tests.
+%  (3) The measurement gap: no automatic metric is trusted for replacement
+%      (Lai & Nissim; Alva-Manchego 2021; Scialom 2021), so the evaluation
+%      must be human-grounded: Ch 4 builds that instrument.
+% CLOSING THEME HOOK: "the literature offers structure as a promising lever
+% and warns that no metric can adjudicate it; the next two chapters take
+% both seriously."
 
-\subsection{Literature Review}
-Relevant papers to include:
-\begin{itemize}
-    \item \cite{Surez-Figueroa2024} \bibentry{Surez-Figueroa2024}
-    \item \cite{Surez-Figueroa2023} \bibentry{Surez-Figueroa2023}
-    \item \cite{Dmitrijev2024} \bibentry{Dmitrijev2024}
-    \item \cite{Neidlein2020} \bibentry{Neidlein2020}
-    \item \cite{Liu2022} \bibentry{Liu2022}
-    \item \cite{Lai2024} \bibentry{Lai2024}
-    \item \cite{Ichien2024} \bibentry{Ichien2024}
-    \item \cite{Jia2024} \bibentry{Jia2024}
-\end{itemize}
+% TODO(jelle): prose.
+
+\newpage

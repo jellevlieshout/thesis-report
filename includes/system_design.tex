@@ -1,4 +1,34 @@
 \section{System Design \& Methodology}
+\label{ch:system-design}
+
+% ============================================================================
+% === WRITING GUIDE: Chapter 3 (~7 pages; ~90% already written) =============
+% ============================================================================
+% JOB: present the artifact as the embodiment of "structure": four LangGraph
+% workflows, the 3-step pipeline (detect -> explain -> transform), structured
+% JSON output, the monolithic baseline as the anti-structure control, and the
+% observability stack. Frame the pipeline-vs-monolithic contrast as a
+% DESIGNED EXPERIMENT, not just engineering.
+% Remaining work: figures F-1 and F-2 (placeholders below), and a short
+% opening paragraph if desired.
+% THEME HOOK: open with "the design hypothesis is that explicit task
+% structure, not model choice, is the controllable variable"; close with "a
+% structured system makes structured claims testable, provided the
+% measurement can see them, which Chapter 4 addresses."
+% NOTE: the single-call structured-output workflows described in 3.2 coexist
+% with the 3-step pipeline (detect / explain / transform as three sequential
+% LLM calls) used in the survey conditions; make sure 3.2 describes BOTH
+% architectures explicitly (the 3-step pipeline is currently implicit).
+% ============================================================================
+
+% --- FIGURE F-1 (replace placeholder): system architecture diagram
+% (FastAPI + LangGraph + Couchbase + vLLM/UPM A100 + LangSmith + React).
+\begin{figure}[h!]
+\centering
+\fbox{\parbox[c][6cm][c]{0.9\textwidth}{\centering \textit{[Placeholder F-1: system architecture diagram]}}}
+\caption{System architecture: FastAPI experiment runner, LangGraph workflows, Couchbase persistence (datasets, runs, predictions, evaluations), vLLM open-weights serving on the UPM A100 node, LangSmith tracing, and the React inspection frontend.}
+\label{fig:architecture}
+\end{figure}
 
 \subsection{Problem Formulation}
 
@@ -48,7 +78,7 @@ The system is built on the following components:
     \item \textbf{Open-weights serving}: vLLM (continuous batching, PagedAttention) on a UPM A100 GPU node, exposed to the experiment runner via a basic-auth-protected ngrok HTTPS tunnel. Two open-weights models are evaluated: \texttt{meta-llama/Meta-Llama-3.1-8B-Instruct} (FP16, deliverable system) and \texttt{casperhansen/llama-3.3-70b-instruct-awq} (AWQ-quantised, scale-comparator). The same OpenAI-compatible client code path serves both, so the only difference between conditions is the model identifier on the run document.
     \item \textbf{Persistence}: Couchbase 7.6 document store with four collections: \texttt{datasets} (gold-annotated examples; 16{,}202 VU Amsterdam + 3{,}487 SemEval = 19{,}689 total), \texttt{runs} (experiment metadata and status), \texttt{predictions} (per-example LLM outputs), and \texttt{evaluations} (computed metrics). Document keys follow a namespaced convention (e.g.\ \texttt{prediction::\{run\_id\}::\{example\_id\}}).
     \item \textbf{Prompt versioning}: each run records the full prompt text and its SHA-256 hash, enabling exact reproducibility and detection of prompt drift between runs.
-    \item \textbf{Observability}: LangSmith tracing is configured for all LLM invocations, providing post-hoc inspection of model inputs, outputs, token usage, and latency per step. Trace analysis is deferred to Chapter~\ref{sec:rq4}.
+    \item \textbf{Observability}: LangSmith tracing is configured for all LLM invocations, providing post-hoc inspection of model inputs, outputs, token usage, and latency per step. Trace analysis is discussed qualitatively in Section~\ref{sec:discussion-observability}.
     \item \textbf{Frontend}: a React/TypeScript single-page application with TanStack Query for data fetching, featuring run dashboards, example-level span visualisation with colour-coded gold/predicted overlays, literal replacement diff views, and multi-run metric comparison charts.
 \end{itemize}
 
@@ -67,12 +97,28 @@ Five evaluation metrics are computed automatically for each completed run:
 All metrics are persisted as \texttt{EvaluationData} Couchbase documents and are re-computable on demand via the \texttt{POST /runs/\{run\_id\}/evaluate} endpoint. Section~\ref{sec:eval-methodology} discusses the appropriateness of these metrics for figurative language evaluation in more detail.
 
 \subsection{Baselines}
+\label{sec:baselines}
 
-% TODO: Implement and evaluate monolithic single-prompt baseline and detection-only baseline for RQ2 ablation study.
+% --- GUIDE (~0.5 pp): the monolithic baseline IS implemented and evaluated
+% (it is survey condition 2 and the RQ2 control). Expand the bullets below
+% into short prose; the key point is that the monolithic condition is the
+% anti-structure control in a designed experiment: same model, same inputs,
+% same temperature, structure removed.
 \begin{itemize}
-    \item \textit{Monolithic single-prompt} (to be implemented): a single prompt that requests detection and replacement without intermediate explanation or structured reasoning.
-    \item \textit{Detection-only comparison}: detect-then-replace runs are compared against detection-only runs on the same examples to quantify the effect of the replacement step on detection quality (see Section~\ref{sec:rq3}).
-    \item \textit{Na\"ive paraphrasing} (to be implemented): a baseline that rewrites the sentence without explicit figurative language handling.
+    \item \textbf{Monolithic single-prompt}: a one-paragraph stub prompt that requests a literal rewrite of the input sentence with free-text output. No detection step, no explicit reasoning step, no structured output schema. This is the RQ2 control condition (Section~\ref{sec:rq2}) and one of the three human-evaluation survey conditions (Section~\ref{subsec:rq3-human-eval}).
+    \item \textbf{Detection-only comparison}: detect-then-replace runs are compared against detection-only runs on the same examples to quantify the effect of the replacement step on detection quality (see Sections~\ref{sec:rq1} and~\ref{sec:rq3}).
 \end{itemize}
+
+% --- FIGURE F-2 (replace placeholder): the visual of the central contrast.
+% Three panels: (a) monolithic single prompt -> free-text rewrite;
+% (b) single-call structured output (detection + replacement in one call);
+% (c) 3-step pipeline: detect -> explain -> transform, each a separate LLM
+% call with inspectable intermediate state.
+\begin{figure}[h!]
+\centering
+\fbox{\parbox[c][6cm][c]{0.9\textwidth}{\centering \textit{[Placeholder F-2: monolithic vs.\ single-call structured output vs.\ 3-step pipeline]}}}
+\caption{The three system architectures compared in this thesis. The monolithic baseline produces only a free-text rewrite; the single-call structured-output workflow commits to detected spans alongside the paraphrase; the 3-step agentic pipeline separates detection, explanation, and transformation into sequential calls with inspectable intermediate state.}
+\label{fig:architectures-contrast}
+\end{figure}
 
 \newpage
