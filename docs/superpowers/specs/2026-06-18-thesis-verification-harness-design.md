@@ -87,13 +87,13 @@ references in `bibliography.bib` (papineni2002bleu, xu2016sari, zhang2020bertsco
 magpie, trofi, moh, williams1959regression, Graham2016a, vuamsterdammetaphorcorpus,
 tayyar-madabushi-etal-2022-semeval) have no PDFs and run tier-1; they are rarely contested.
 
-**Open data flags surfaced during PDF inspection:**
+**Data flags surfaced during PDF inspection (both resolved 2026-06-18):**
 1. `Dmitrijev2024.pdf` is titled "Metaphors and Analogies in the Context of Large Language
-   Models", but the `mendeley.bib` entry for that key is titled (beginning) "Scenarios,
-   Fictions, and Imagined Possibilities in Science, Engineering". The Mendeley entry may be
-   mislabeled or may point at a different paper. Resolve before citing.
-2. `DUPLICATE_of_Scialom2021.pdf` is a byte-identical copy of `Scialom2021.pdf` (same MD5),
-   left in place rather than deleted. Safe to remove.
+   Models", while the `mendeley.bib` entry for that key begins "Scenarios, Fictions, and
+   Imagined Possibilities in Science, Engineering". Confirmed correct by the user; the PDF
+   and bibkey stand as mapped.
+2. The byte-identical Scialom2021 duplicate was removed. Folder now holds 19 PDFs, one per
+   argument bibkey.
 
 ## Mechanism
 
