@@ -587,3 +587,804 @@ This approach is model-agnostic, methodologically rigorous, and well-aligned wit
      - Callers must include basic auth: `Authorization: Basic <base64(jelle:<password>)>`
   - **Note:** The ngrok subdomain changes each time ngrok restarts. The vLLM process must be restarted after a JupyterHub server restart (pod resets kill running processes).
 - **Next:** Verify vLLM serves requests with the test model, then scale up to a 70B model and connect to the thesis experiment system.
+
+## 30-04-2026
+
+- **State review.** Caught up on where the project stands: Steps 1–18 and 20 of the engineering plan are complete; large-scale runs (Step 17) executed on both VU and SemEval at 100–200 examples with `google/gemini-3-flash-preview`; v2 chain-of-thought + 1-shot replacement prompts (Step 20) gave +1.6pp BERTScore F1 / +11pp BLEU on SemEval idiom replacement. Open work clusters into three buckets: human-eval pipeline (Step 19b–d), RQ1 open-weights evaluation on the UPM cluster, and RQ2 agentic-vs-monolithic ablation (not yet started).
+- **Audit of LLM wiring — important finding.** The experiment runner (`POST /runs` → `workflows/graph.py` → `workflows/nodes.py` → `OpenRouterClient`) is **hardcoded to OpenRouter** at `base_url="https://openrouter.ai/api/v1"` (`clients/python/clients/openrouter/client.py:38`). The UPM cluster vLLM (Qwen2.5-7B currently, 70B target) sits behind a rotating `*.ngrok-free.dev` URL with HTTP basic auth, but **nothing in the API references it** — the ngrok URL isn't in any config and no client is pointed at it. Every Step 17 / Step 20 run so far has therefore hit OpenRouter, not the cluster. There is a second module `workflows/metaphor.py` that *does* read `OPENROUTER_BASE_URL` from env (configurable) — but that module is only used by `routes/detection.py` and `routes/adaptation.py`, not by the experiment runner. Default env model is `tngtech/deepseek-r1t2-chimera:free`.
+- **Plan to connect the cluster (new TODOS step).** Two options considered:
+  1. *Quick:* extend `OpenRouterClient.get_chat_model()` to accept an override `base_url` + auth header, drive from env vars (`LLM_BASE_URL`, `LLM_API_KEY`).
+  2. *Cleaner:* add a sibling `VLLMClient` and dispatch in `get_model()` on a `provider` field (or a `vllm:` prefix in `model_name`). Lets us A/B hosted vs. open-weights without env juggling — required for the RQ1 comparison anyway.
+  - Picking option 2. Wrinkle: ngrok basic auth needs `Authorization: Basic <base64>` on every request; `langchain_openai.ChatOpenAI` accepts `default_headers=` so this is straightforward.
+  - Added as **Step 21** in `e2r-adaptation/TODOS.md`. Blocks RQ1 re-run of Step 17 on the open-weights model.
+- **Skill update.** Added a rule to `~/.claude/skills/thesis/SKILL.md` requiring `notes.md` and `TODOS.md` to be kept in sync proactively after any meaningful chunk of work — append a dated `notes.md` entry, tick `[x]` on completed sub-steps with a one-line result, add new sub-steps when work surfaces them.
+- **Next:** Implement Step 21 (vLLM client + provider dispatch), point at the UPM ngrok URL, smoke-test with Qwen2.5-7B, then scale to Llama 3.3 70B Q4 (or DeepSeek R1 70B Q4) and re-run Step 17 detection + detect-then-replace for the RQ1 open-weights vs hosted comparison. In parallel: queue Step 19b — fire a fresh v2-prompt run, export, pick 40–50 short / unambiguous / replacement-present examples for the human-eval survey draft.
+- **Cluster-side startup script committed.** Added `scripts/upm_vllm_startup.sh` and `scripts/UPM_VLLM_README.md` to the e2r-adaptation repo. The script provisions a persistent NFS-backed venv, installs vLLM, downloads model weights to the persistent HF cache, kills any stale processes, starts vLLM (`Qwen/Qwen2.5-7B-Instruct` on port 8000 by default), installs ngrok if missing, configures the authtoken, and starts a public ngrok tunnel with HTTP basic auth. Required env vars: `NGROK_AUTHTOKEN`, `BASIC_AUTH_USER`, `BASIC_AUTH_PASS` (≥ 8 chars). Logs at `/home/jovyan/vllm.log` and `/home/jovyan/ngrok.log`. Manual steps that cannot currently be automated (JupyterHub login, exporting credentials, copying the rotating ngrok URL into the API env after each pod restart) are documented in the README. Marked as Step 21.0 in TODOS.md.
+- **Step 21a–c done — VLLMClient wired in.** Cluster came up at `https://kristin-caissoned-nonfervently.ngrok-free.dev` serving `Qwen/Qwen2.5-7B-Instruct`. Verified end-to-end via raw curl: `POST /v1/chat/completions` round-trips a valid OpenAI-shaped response (`{"choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":40,"completion_tokens":2}}`).
+  - Added `clients/python/clients/vllm/client.py` (`VLLMClient`): reads `VLLM_BASE_URL` + `VLLM_BASIC_AUTH` from env, normalizes auth (accepts raw `user:pass`, naked base64, or full `Basic <hdr>`), returns a `ChatOpenAI` with `default_headers={"Authorization": "Basic <base64>"}`. Sets `api_key="vllm"` because langchain-openai requires a non-empty key even though vLLM ignores it. Raises a clear error if `VLLM_BASE_URL` is missing — important because the ngrok subdomain rotates per restart and the failure mode would otherwise be a confusing 404.
+  - Added provider dispatch in `services/api/src/workflows/nodes.py` `get_model()`: model names prefixed with `vllm:` route through `VLLMClient`, anything else falls through to `OpenRouterClient` (so all existing Step 17 / 20 runs keep working unchanged). Example: `vllm:Qwen/Qwen2.5-7B-Instruct`. Strips the prefix before passing to the API.
+  - Surfaced `VLLM_BASE_URL` + `VLLM_BASIC_AUTH` env vars in `services/api/src/conf/__init__.py` with getters; piped them through `services/api/polytope.yml` as `pt.secret vllm-base-url` / `pt.secret vllm-basic-auth`; documented in `set-values-and-secrets.example`; populated the gitignored `set-values-and-secrets` with the live values. Also fixed a pre-existing duplicate `OPENROUTER_MODEL` entry in `VALIDATED_ENV_VARS` while there.
+  - Static unit check of `VLLMClient` passes: correct base_url, base64 header matches expected, pre-encoded `Basic` headers pass through, empty base_url raises.
+- **Step 21d done — end-to-end smoke test green.** Brought up the full Polytope stack (`pt run stack`: api + couchbase + frontend + config-manager) and fired a 5-example detection run against Qwen2.5-7B on the UPM cluster.
+  - Run id: `ba4425c8-67af-41f5-943b-84e56196a7a4`. Config: dataset=vu_amsterdam, phenomenon=metaphor, task_type=detection, model_name=`vllm:Qwen/Qwen2.5-7B-Instruct`, temperature=0, prompt_version=v2, limit=5.
+  - Result: **5/5 completed, 0 failed** (cluster reliability looks comparable to or better than google/gemini-3-flash-preview, which was hitting 1/100 failures on Step 17).
+  - Spot-check: Qwen correctly identified "came like a bolt out of the blue" as figurative with proper character offsets (49–81) and matching token_labels — confirms the structured-output → spans → token_labels pipeline survives the cluster round-trip.
+  - Metrics on this 5-sample slice: f1_sentence=0.2, f1_token=0.0, f1_span=0.0. The 0s are not the wiring — Qwen-7B is identifying phrase-level expressions (idioms) while VU gold is word-level (MIP). Same mismatch pattern we already saw with larger hosted models at small N. Real signal comes at limit=200 (Step 21e).
+  - Polytope mechanics worth remembering: `pt run stack --no-ui` requires a TTY (`script -q /dev/null bash -c '...'` works), and re-running on a path with a live sandbox prompts to confirm — pipe `echo y` to skip. All four containers spawn in parallel; couchbase data persists in the `couchbase-data` volume across `pt run` invocations (so re-ingestion is *not* always required, contrary to my earlier note — only after volume drops).
+  - Stack still running locally; can stop with `docker stop $(docker ps -q)`.
+- **OpenRouter account issue.** First attempt at the 19b survey-pool run failed: 200/200 examples returned 401 "User not found" from OpenRouter — the prior account on the old key was deleted/disabled. New key issued (`sk-or-v1-6a87...`, $30 weekly limit, no usage). Updated `set-values-and-secrets`, re-ran, key validates against `/auth/key` cleanly.
+- **Runaway-generation issue, fixed with `max_tokens` cap.** Re-running with the new key, `google/gemini-3-flash-preview` blew through length limits — first failure had `completion_tokens=65520` (~$0.20). Added `max_tokens=3000` to `OpenRouterClient.get_chat_model()` (and `VLLMClient` for symmetry); failure rate dropped from 33% (at 2000) to ~14% (at 3000), and worst-case cost per failure capped at ~$0.009. Logged as Step 20.5.
+- **Parallelised the experiment runner (Step 20.6).** Found that `_execute_run` in `routes/runs.py` was sequential — `for` loop with blocking `graph.invoke()` per example, ~3 examples/min. Refactored to `asyncio.gather()` over `graph.ainvoke()` calls, gated by a per-provider `asyncio.Semaphore`. Couchbase upserts wrapped in `asyncio.to_thread` so the sync SDK doesn't stall the loop. Per-provider concurrency caps:
+  - `OPENROUTER_CONCURRENCY=10` (default) — OpenRouter spreads load across many backend GPUs.
+  - `VLLM_CONCURRENCY=4` (default for Qwen-7B on the 40 GB A100). Will need to be **1** for a 70B Q4 model since the weights already fill VRAM. Documented in `scripts/UPM_VLLM_README.md`.
+  - Switch is on the same `vllm:` prefix used for client dispatch — single source of truth for "which provider".
+  - Smoke test: 5 examples in <3s. Full 200-example survey-pool run in **91 seconds** vs ~70 min sequential. ~45× speedup. Cluster path untouched (will exercise in Step 21e).
+- **Step 19b done — 50 survey candidates filed.** Re-fired the 200-example SemEval idiom `detect_then_replace` run after the parallelisation landed (run `2a6b3de5-de0b-4bdd-b1ed-563ea72481f0`, gemini-3-flash-preview, v2, T=0): 173/200 completed, 27 truncations.
+  - Filter realised SemEval sentences run long (median ≈ 25 words, 52/200 are 30+ words). Relaxed the <20-word filter to <30 words; without that change only 24 candidates passed (need 40–50). With <30, expression ≤ 4 words, replacement non-null, and prefer-gold-tier random selection: 61 candidates → 50 selected, all with a SemEval Task B paraphrase.
+  - Spot-check: replacements look clean and natural (e.g. "on cloud nine" → "extremely happy"; "smooth the way for women to break through the glass ceiling" → "make it easier for women to reach top management positions"). One nice negative example: "Memory Lane" (a product name) flagged as figurative — these false-positive cases will surface as low ratings in the survey, which is useful data.
+  - **Important methodology call.** Dropped `gold_sentence_replacement` from the annotator-facing template. SemEval's gold is a Task B *comparison sentence*, often unrelated to the idiom's meaning (e.g. for "on cloud nine" the gold is "The clean summer air of upstate New York…"). Including it would mislead annotators; we use it only as a filter signal (rows with a gold are likely better-curated).
+  - Files: `1 - Thesis/Survey/survey_candidates_v1.csv` (50 rows) and `1 - Thesis/Survey/README.md` (methodology, rubric triad — grammaticality / meaning preservation / simplicity per [[Data-Driven Sentence Simplification Survey and Benchmark]]; per-annotator standardisation per [[Continuous Measurement Scales in Human Evaluation of Machine Translation]]; open questions for next Mari Carmen meeting).
+  - Step 19c column-set is finalised. Open methodological questions for Mari Carmen: confirm 0–1 vs 0–100 scale (Graham 2013 used 0–100; either works after standardisation), approve the rubric triad, supply the ethics paragraph.
+- **Survey design spec written.** Re-read [[Continuous Measurement Scales in Human Evaluation of Machine Translation]] (Graham 2013) properly — earlier "0–1 continuous" was my own loose phrasing; the WMT Direct Assessment standard is unambiguously **0–100**. Wrote `1 - Thesis/Survey/PLAN.md` reconciling Graham 2013 (scale + QC machinery) with Alva-Manchego 2020's rubric triad (grammaticality / meaning preservation / simplicity) and Alva-Manchego 2021 + Scialom 2021 (negative-result defence for human eval). Plan is structured for thesis-defence rigour:
+  - Three independent 0–100 sliders per item (one per rubric dimension), per-annotator z-score standardisation before aggregation.
+  - 8–10 items per respondent (Mari Carmen's number), random subset from the 50-item pool, balanced so each item gets ≥ 3 ratings → 15–19 respondents needed (or drop to 25 items × 3 if Mari Carmen's pool is smaller).
+  - **Two QC techniques** I had skipped earlier and just added: (a) bad-reference items (deliberately degraded replacement, must score lower than the system's actual output), (b) repeat-pair items (same item shown twice, ratings should be within 30 points). Both per Graham 2013. Annotators failing either are filtered.
+  - Form: Google Forms + Apps Script for randomised subsets per respondent. Qualtrics is the alternative if UPM has a license.
+  - Bumped column header `human_rating_0_1` → `human_rating_0_100` in the candidate CSV and the script.
+  - Updated open-questions list for next Mari Carmen meeting: confirm 0–100 scale, approve rubric triad and QC techniques, provide ethics paragraph, distribution channel + respondent count.
+- **Survey-candidate-selection script promoted out of /tmp.** Moved `/tmp/select_survey_candidates.py` → `e2r-adaptation/scripts/select_survey_candidates.py` (executable, with proper docstring + usage example). The original tmp copy was ephemeral; this one ships with the repo so any future thesis-pool regeneration is reproducible. Referenced from `Survey/README.md` and `Survey/PLAN.md`.
+- **Step 21e prep (70B switch).** Decision (and rationale captured in `scripts/UPM_VLLM_README.md`): use **`casperhansen/llama-3.3-70b-instruct-awq`** as the 70B target — Llama 3.3 70B Instruct, AWQ-quantized for vLLM, ~37 GB weights, fits the 40 GB A100 with `--gpu-memory-utilization 0.95`. Picked over DeepSeek R1 70B Distill because R1 is a reasoning model and would likely emit very long outputs that hit the API-side `max_tokens=3000` cap (same failure mode we just fixed for Gemini-3-flash). Parametrized `upm_vllm_startup.sh` to take `MODEL` / `QUANTIZATION` / `MAX_MODEL_LEN` / `GPU_MEMORY_UTILIZATION` from env so the same script serves 7B and 70B. `MAX_MODEL_LEN=2048` for 70B (tight KV-cache headroom). Local side ready to switch `vllm-concurrency` from 4 → 1 once the cluster is live. Survey-pool regeneration on 70B is queued as TODOS step `21e-survey` — the survey should evaluate the open-weights system that ships with the thesis, not the hosted Gemini baseline. Waiting on cluster bring-up + new ngrok URL from the user.
+- **Step 21e — pivot to Llama-3.1-8B.** Brought up the 70B endpoint successfully but it was too slow at concurrency=1 (~30 s per detect_then_replace example, ~100 min for a 200-example survey-pool run). For thesis-pacing reasons, pivoted to `unsloth/Meta-Llama-3.1-8B-Instruct` (FP16, ~16 GB weights, no quantization needed, plenty of headroom for concurrency=4). 70B remains a future upgrade if RQ1 results warrant the wait — but for the survey-pool generation a fast, healthy 8B is the right tradeoff.
+- **Operational improvements during the model-switch dance:**
+  - **`HF_TOKEN` env var** added to `upm_vllm_startup.sh` for gated HuggingFace repos (meta-llama/* needs both an accepted license and a token). Token is persisted to `$HF_HOME/token` (chmod 600) so subsequent calls in the venv pick it up automatically. Falls back gracefully to ungated mirrors (used `unsloth/Meta-Llama-3.1-8B-Instruct` to skip the gating).
+  - **`scripts/upm_vllm_shutdown.sh`** written for clean teardown. Stops ngrok + vLLM, polls `nvidia-smi` until VRAM drops below 1 GiB. Crucial because `pkill` alone doesn't always release CUDA memory in time for the next vLLM startup (which fails with "Free memory < gpu_memory_utilization"). Handles the JupyterHub-specific case where `nvidia-smi` is permission-restricted (returns "[Insufficient Permissions]" instead of a number); script detects non-numeric output and exits gracefully with a hint about giving VRAM 30–60 s to drain.
+  - Model-switch workflow now documented in `scripts/UPM_VLLM_README.md`: shutdown → unset 70B-only env vars → set 8B env vars → startup.
+  - Hit one cluster-side gotcha: when relaunching vLLM, the prior instance was still holding ~44 GiB of the 46 GiB A100 (1.7 GiB free, vLLM wanted 95% = 44 GiB). Clean shutdown script fixed this. Also documented in the README.
+  - First 70B attempt failed because cluster `MAX_MODEL_LEN=2048` left only ~48 tokens for the prompt vs the v2 detect-then-replace prompt's ~800 tokens. Fix: bump cluster `MAX_MODEL_LEN` to 4096 (single in-flight request fits in remaining VRAM since concurrency=1). Documented.
+- **Step 21e-survey done — `survey_candidates_v2.csv` generated.** Run `a45befe4-ff5c-43bd-ae87-9042856f3485` on `unsloth/Meta-Llama-3.1-8B-Instruct`, T=0, v2 prompts, 200 SemEval idiom detect_then_replace examples. **197/200 completed in 75 s** (98.5% success — better than Gemini's 86%). 73 candidates passed the filter (vs Gemini's 61); 50 selected, all with SemEval gold paraphrase. Quality observations:
+  - Model is more conservative than Gemini — 3/5 sentences in the smoke-test slice returned no idiom. Misses common ones like "cheat sheet".
+  - Hallucinates occasionally — flagged "pecking order" in a sentence that didn't contain it; identified "baby blues" as the postpartum-depression idiom in a sentence about literal blue eyes; produced grammatically-broken replacements like "being a person she looked up to who never served as a role model for her" for "be the role model".
+  - Good replacements when it gets the meaning right: "big fish story" → "exaggerated story about a large fish", "the big cheese" → "a person of great importance", "out of control" → "unmanageable".
+  - These are exactly the failure modes the Direct Assessment survey is designed to surface — the rubric triad (grammaticality / meaning preservation / simplicity) catches each kind separately. Also: hallucinated detection is a real signal in itself; some annotators will flag those as ungrammatical or meaning-destructive in the rubric.
+  - `survey_candidates_v2.csv` is now the **active pool**; v1 (Gemini) is kept on disk as the cross-system reference for when the report needs a between-systems comparison.
+
+## 04-05-2026
+
+- **Decision: drop all hosted-model results and conditions from the thesis.** Hosted models (`google/gemini-3-flash-preview` via OpenRouter) were originally introduced on 29-01-2026 as a *placeholder* to verify the experiment runner before the UPM cluster was wired in. Operational inertia — Gemini "just worked" — kept it as the de-facto experiment driver through Steps 14–20, even though the cluster was always the intended deliverable. The 30-04-2026 audit (line 594 above) confirmed every Step 17/20 result had hit OpenRouter, not the cluster. The fix as of 30-04-2026 was the `VLLMClient` + provider dispatch (Step 21a–c) plus the open-weights survey pool on Llama-3.1-8B (Step 21e-survey). Today's decision finishes the cleanup: no hosted-model results in the report, no hosted-model condition in the human-eval survey.
+- **Survey design — three open-weights conditions**, all rating outputs on the same 30 SemEval-idiom source sentences:
+  1. **Llama-3.1-8B-Instruct + agentic detect-then-replace** — the deliverable system that ships with the thesis.
+  2. **Llama-3.1-8B-Instruct + monolithic single-prompt** — the RQ2 ablation, isolates the contribution of agentic decomposition at fixed scale.
+  3. **Llama-3.3-70B-Instruct-AWQ + agentic detect-then-replace** — the within-family scale comparator for RQ1, isolates scale at fixed prompt and family. Earlier Step 21e ruled out 70B for *bulk* eval (~30 s/example × 200 = too slow), but for a 30-source survey-pool one-off it's ~15 min — acceptable.
+- **Why no hosted condition in the survey.** The thesis contribution is an agentic pipeline running on open-weights infrastructure suitable for the UPM Easy-to-Read FACILE umbrella; including a hosted-model condition in the human-eval would conflate "is this thesis's system any good" with "is Gemini good", and the survey (one-shot, ~17 respondents) cannot afford to ask both questions at once.
+- **Report-side updates landed in this pass:**
+  - `includes/background.tex` § Evaluation Methodology — replaced the stale 1–5 / 40–50-sample block with the current 0–100 / 3-rubric / Direct Assessment spec, citing Graham 2013, Alva-Manchego 2020, Alva-Manchego 2021, and Scialom 2021.
+  - `includes/system_design.tex` — LLM-access bullet rewritten to describe the open-weights cluster (Llama-3.1-8B + Llama-3.3-70B-AWQ via vLLM); OpenRouter retained only as a development convenience, explicitly *not* the source of any reported results.
+  - `includes/rq1_detection.tex` — dropped the Gemini result tables; analysis paragraphs reframed as expectations until the open-weights re-runs land. Added a "scale within the same family" paragraph for the 8B-vs-70B comparison.
+  - `includes/rq3_replacement.tex` — dropped the Gemini result tables; rewrote the human-evaluation paragraph from the stale 1–5 / 40–50 spec to the current 0–100 / 3-rubric / 90-item / 3-condition design. Added a `\subsection{Human Evaluation}` with the load-bearing parameters in the chapter body, with the full design referenced as an Appendix.
+- **TODOS — new steps.** `e2r-adaptation/TODOS.md` Steps **21f, 21g, 21h** (re-run Step 17/20 on Llama-3.1-8B and Llama-3.3-70B-AWQ; record the within-family scale comparison for RQ1); Step **22a–g** (sample 30 sources, implement the monolithic single-prompt graph, generate the two missing system outputs, build `survey_items.csv`, generate bad-reference and repeat-pair items); Step **23a–b** (re-export `mendeley.bib` so the four new methodology citations resolve).
+- **Survey/PLAN.md edits.** §4 condition table replaced (Gemini out, Llama-3.3-70B-AWQ in); §9 deliverables checklist expanded with the three pre-survey generation tasks (sample 30 sources; generate monolithic 8B outputs; generate agentic 70B outputs).
+- **What does *not* change.** The 50-row v2 candidate pool stays as the source for the 30 sampled sources; the 0–100 / 3-rubric / per-annotator-z / assessor-intrinsic-QC instrument stays; the ~17-respondent estimate stays. The only methodological change is that the third condition is now Llama-3.3-70B-AWQ rather than Gemini.
+- **Next.** (1) Run Step 21f/21g (open-weights re-runs of Step 17/20) so the report tables can land. (2) Send the updated `Survey/PLAN.md` to Mari Carmen for sign-off on the 0–100 scale, the rubric triad, the QC techniques, and the ethics paragraph. (3) Step 22 generation pipeline once she signs off.
+
+### Step 21f / 21g — 8B sweep results (Llama-3.1-8B-Instruct via UPM vLLM, T=0, limit=200, canonical `meta-llama/...` repo)
+
+| Run | run_id | task | prompt | completed | f1_sent | f1_tok | f1_span | BLEU | BERT_F1 |
+|---|---|---|---|---|---|---|---|---|---|
+| 21f.vu.detect.v1 | bb81a086 | metaphor / detection | v1 | 200/200 | 0.235 | 0.198 | 0.030 | — | — |
+| 21f.semeval.detect.v1 | 76f0e7dd | idiom / detection | v1 | 199/200 | 0.307 | — | 0.189 | — | — |
+| 21g.vu.dtr.v1 | d59d2b00 | metaphor / dtr | v1 | 199/200 | 0.367 | 0.210 | 0.041 | — | — |
+| 21g.semeval.dtr.v1 | 5083e3ab | idiom / dtr | v1 | 198/200 | 0.601 | — | 0.245 | 0.068 | 0.850 |
+| 21g.vu.dtr.v2 | fb375801 | metaphor / dtr | v2 | 200/200 | 0.390 | 0.282 | 0.053 | — | — |
+| 21g.semeval.dtr.v2 | 072f96dc | idiom / dtr | v2 | 200/200 | 0.590 | — | 0.266 | 0.059 | 0.848 |
+
+**Observations:**
+- **Idiom > metaphor at every level (H3 confirmed at 8B).** SemEval idiom detection f1_sentence=0.307 vs VU metaphor 0.235; in detect-then-replace, idiom f1_sentence ≈ 0.59–0.60 vs metaphor 0.37–0.39. Same qualitative pattern that was on Gemini, now on the open-weights deliverable.
+- **v2 chain-of-thought helps metaphor but very slightly hurts idiom on Llama-3.1-8B.** VU metaphor dtr: v1→v2 sentence F1 0.367→0.390 (+2.3pp), span F1 0.041→0.053. SemEval idiom dtr: v1→v2 BLEU 0.068→0.059 (−0.9pp), BERTScore F1 0.850→0.848 (−0.2pp), sentence F1 0.601→0.590 (−1.1pp). Span F1 does improve (0.245→0.266). Notably *different* from the Gemini Step 20 A/B which showed +11pp BLEU / +1.6pp BERTScore on SemEval idiom for v2 — suggesting the chain-of-thought benefit is model-dependent, and that the canonical 8B model handles the v1 stub prompt well enough that the additional reasoning steps produce slightly less direct rewrites.
+- **Detection-only F1 is markedly lower than detect-then-replace F1 on SemEval (0.307 vs 0.601).** Suggests the detection-only prompt is under-specifying the task for an 8B Instruct model — likely the "look for multi-word expressions whose combined meaning cannot be derived compositionally" framing is not producing the same identification as the dtr prompt's structured output. Worth a closer look during the report write-up.
+- **Failure rate is low (1–2 examples per 200 across the run, except VU v2 which was perfect).** No structured-output schema-violation crisis as seen with Gemini at higher max_tokens.
+
+### Step 22a / 22b — pre-survey scaffolding (2026-05-04, evening)
+
+- **22a.** `scripts/select_survey_sources.py` — stratified random sample of 30 sources from the 50-row Llama-3.1-8B v2 candidate pool (`survey_candidates_v2.csv`), seed 19260817. Output: `1 - Thesis/Survey/selected_sources.csv` (lengths 31–176 chars, median 116). The 30 sources × 3 system conditions = 90 survey items.
+- **22b.** `monolithic_replace` task type added to the runner end-to-end. Code surface: `TaskType.MONOLITHIC_REPLACE` enum value; `load_prompt` resolves `prompts/{phenomenon}/monolithic_replace_{phenomenon}.txt`; `_invoke_llm_monolithic` in `workflows/nodes.py` (single LLM call, free-text output, no structured-output schema, `detection_result=None`); two new graphs registered in `workflows/graph.py`. Smoke-test (run `ab83d343`, 1 SemEval idiom example): produced a clean literal rewrite ("the big cheese" → "the most important person in charge of all local supermarkets"), `predicted_detection=None` as expected. Eval pipeline already guards on `pred.predicted_detection is None`, so monolithic runs naturally yield BLEU + BERTScore only on SemEval — exactly what we want for the automatic-metric side of RQ2.
+- **`scripts/run_open_weights_sweep.py`** — driver for the run sweeps. Three suites: `21f-21g` (6 runs), `22c` (1 run, 8B monolithic on SemEval idiom), `22e` (1 run, 70B agentic v2 on SemEval idiom). Bumped urlopen timeouts to 180s after the first 8B sweep hit timeouts on /evaluate (BERTScore on 200 examples takes ~60–120s); the underlying runs were all fine on the API side.
+- **`scripts/assemble_survey_items.py`** — Step 22f assembler. Takes 3 run_ids (8B agentic v2, 8B monolithic, 70B agentic v2) and produces `survey_items.csv` (90 rows). The `displayed_detected_expression` column shows the SemEval gold idiom for *all* three conditions on the same source, so annotators see the same anchor regardless of which system produced the replacement.
+- **22c run firing now** on Llama-3.1-8B-Instruct (limit=200 SemEval idiom, monolithic_replace, T=0). After this lands, the cluster needs the 70B-AWQ swap and the user will be prompted for it.
+
+### Step 22 — survey-pool generation, dataset-query determinism fix (2026-05-04, late)
+
+- **Determinism bug discovered during Step 22f assembly.** The dataset query in `_execute_run` (`services/api/src/routes/runs.py`) was missing an `ORDER BY` clause: `SELECT ... WHERE dataset=$1 AND phenomenon=$2 [LIMIT N]`. With no `ORDER BY`, Couchbase returns rows in document storage order, which is non-deterministic across container restarts (especially since the SemEval bucket is re-ingested on every restart per the "Couchbase volume not mounted" note). Net effect: every Step 17 / Step 21f / Step 21g sweep so far ran on *a different 200-example slice* of SemEval idioms. The candidate pool `survey_candidates_v2.csv` came from run `a45befe4` and only had complete coverage in that run; the new 8B/70B sweeps covered 0–3 of the 30 selected sources. Survey assembly was blocked.
+- **Fix landed.** Added `ORDER BY t.example_id` to the no-filter branch (so future `LIMIT N` runs are reproducible), and added an `example_ids: Optional[List[str]]` field on `RunRequest` plus a `WHERE example_id IN $3` branch in `_execute_run` for targeted runs that need predictions over a specific list of examples (the survey-pool generation case).
+- **Step 22c-targeted (run `c8a2c8e3`).** Re-fired 8B monolithic on the explicit list of 30 selected sources via the new `example_ids` filter. **30/30 completed, 0 failed.** BLEU=0.035, BERTScore_F1=0.857.
+- **Step 22e first pass (run `aa690557`).** Ran 70B agentic v2 at limit=200 on a non-deterministic slice. **200/200 completed, 0 failed**, ~110 min wallclock. Covered only 2 of 30 selected sources, so unusable for survey assembly directly — but provides report-grade automatic metrics on the 70B against a 200-example slice (different slice from the 8B re-runs, so not directly comparable in the RQ1 table).
+- **Step 22e-targeted (run `3e2500ec`).** Re-fired 70B agentic v2 on the 30 selected sources. **30/30 completed, 0 failed**, ~5 min wallclock with concurrency=4 + prefix-cache batching. f1_sentence=0.767, f1_span=0.578, BLEU=0.058, BERTScore_F1=0.858.
+- **Step 22f — `survey_items.csv` assembled.** All 90 rows present, 0 missing. Conditions: `8b_agentic` (run `a45befe4`, unsloth-mirror — outputs identical to canonical Meta at T=0), `8b_monolithic` (run `c8a2c8e3`), `70b_agentic` (run `3e2500ec`). The `displayed_detected_expression` column shows the SemEval gold idiom for all three conditions on the same source (decision: same anchor across conditions, system tags held back from the form for analysis-side metadata only).
+
+### Step 21f / 21g — canonical (deterministic) re-run table (2026-05-04, post-fix)
+
+After the `ORDER BY t.example_id` fix, re-fired the full 6-run 8B sweep. Same query semantics as the survey-pool runs use, so this table is reproducible and matches the deterministic example slice.
+
+| Run | run_id | task | prompt | completed | f1_sent | f1_tok | f1_span | BLEU | BERT_F1 |
+|---|---|---|---|---|---|---|---|---|---|
+| 21f.vu.detect.v1 | 0c017a52 | metaphor / detection | v1 | 200/200 | 0.430 | 0.180 | 0.052 | — | — |
+| 21f.semeval.detect.v1 | f4b87dc3 | idiom / detection | v1 | 200/200 | 0.255 | — | 0.141 | — | — |
+| 21g.vu.dtr.v1 | 5e1fff1f | metaphor / dtr | v1 | 197/200 | 0.553 | 0.230 | 0.067 | — | — |
+| 21g.semeval.dtr.v1 | 590ee73c | idiom / dtr | v1 | 198/200 | 0.480 | — | 0.163 | 0.397 | 0.914 |
+| 21g.vu.dtr.v2 | af7b45f0 | metaphor / dtr | v2 | 196/200 | 0.551 | 0.229 | 0.065 | — | — |
+| 21g.semeval.dtr.v2 | ba235517 | idiom / dtr | v2 | 197/200 | 0.492 | — | 0.162 | 0.400 | 0.915 |
+
+These supersede the first-sweep numbers above (which were on a non-deterministic example slice).
+
+**Observations on the canonical table:**
+- **VU metaphor dtr improves substantially over detection-only.** Detection-only f1_sent=0.430 → dtr v1 0.553 → dtr v2 0.551. v1 and v2 are essentially tied on metaphor dtr (0.553 vs 0.551, f1_token 0.230 vs 0.229) — the chain-of-thought v2 prompt offers no measurable improvement over v1 stub on metaphor replacement at this scale.
+- **SemEval idiom dtr: v1 vs v2 essentially tied on every metric** (f1_sent 0.480 vs 0.492; BLEU 0.397 vs 0.400; BERTScore_F1 0.914 vs 0.915). Striking divergence from the Gemini Step 20 A/B which showed +11pp BLEU / +1.6pp BERTScore for v2. **The chain-of-thought lift is model-dependent and does not transfer to Llama-3.1-8B.** Worth flagging as a finding in the report.
+- **BLEU and BERTScore on the deterministic slice are much higher than the non-deterministic slice** (BLEU 0.397/0.400 vs 0.068/0.059 on the first sweep; BERTScore 0.914/0.915 vs 0.850/0.848). The deterministic slice happens to be richer in examples where the model produces close-to-gold paraphrases — sample-shift effect. The values are *real* for this reproducible slice, but the magnitude is not directly comparable to the Gemini-era numbers because those were on yet another slice. The right comparison is between systems on the *same* slice (i.e., the survey-pool subset for the 30 sources, where 8B agentic, 8B monolithic, and 70B agentic are all evaluated head-to-head).
+- **Detection-only is harder than detect-then-replace on SemEval idiom** (f1_sent 0.255 vs 0.480 v1 / 0.492 v2). Same pattern as the first sweep but stronger now. The detection-only prompt is genuinely under-specifying the task for an 8B Instruct — annotation suggests the dtr prompt's structured output forces the model to commit to specific spans, while detection-only "look for multi-word expressions" is too open-ended.
+- **Failure rate is 0–2% across the sweep** (0/200 to 4/200). Same range as the first sweep.
+
+### Step 22 — survey-pool automatic metrics
+
+| Condition | run_id | N | f1_sent | f1_span | BLEU | BERT_F1 | Notes |
+|---|---|---|---|---|---|---|---|
+| 8B agentic v2 | a45befe4 | 200 | 0.609 | 0.282 | 0.061 | 0.851 | unsloth mirror; survey condition 1 |
+| 8B monolithic v1 | c8a2c8e3 | 30 | — | — | 0.035 | 0.857 | targeted; survey condition 2 |
+| 70B agentic v2 | 3e2500ec | 30 | 0.767 | 0.578 | 0.058 | 0.858 | targeted; survey condition 3 |
+
+**Observations on the survey-pool runs:**
+- **70B vs 8B agentic — scale helps detection more than replacement.** 70B detection f1_sent 0.767 vs 8B's 0.609 (+15.8pp), span F1 0.578 vs 0.282 (+29.6pp). But on replacement: BLEU 0.058 vs 0.061 (essentially tied), BERTScore F1 0.858 vs 0.851 (+0.7pp). This is a clean RQ1 finding: scale lifts the detection ceiling but the replacement quality is bounded by something other than scale at this size class. The human survey will confirm whether the BERTScore tie actually reflects similar perceived quality on the rubric triad.
+- **Monolithic vs agentic at 8B** — monolithic BERTScore is *slightly higher* (0.857 vs 0.851) and BLEU is *lower* (0.035 vs 0.061). Automatic metrics can't differentiate the two cleanly. **This is exactly the case the Direct Assessment survey is built to arbitrate** (Alva-Manchego 2021; Scialom 2021). H2 (decomposition > monolithic) is not supported by the auto-metrics; it stands or falls on the human-rated rubric.
+- **The monolithic-vs-agentic comparison on the same 30 IDs would be the cleanest like-for-like.** TODO if needed: re-aggregate `a45befe4` predictions filtered to the 30 selected `example_ids` and recompute auto-metrics on that subset. That gives a same-pool, same-N comparison.
+
+### Step 22 — fix: BERTScore /evaluate batched (2026-05-04, late)
+
+`/evaluate` was timing out on 200-example SemEval runs because `compute_bertscore` was called per-prediction (200 times), each call re-running RoBERTa setup. Fix: added `compute_bertscore_batch(golds, preds)` in `models/python/models/operations/evaluation.py` that takes the full pair list and calls `bert_score.score(...)` once. Refactored `_compute_metrics` in `routes/runs.py` to collect pairs in the loop and call the batch function after. Also wrapped `_compute_metrics` in `asyncio.to_thread(...)` in both `evaluate_run` and `get_run_metrics` so the eval doesn't block the FastAPI event loop. Verified identical metrics on 5083e3ab pre- and post-patch (bertscore_f1=0.850, bleu=0.068 → exact match). Wallclock dropped from ~120s → ~20–26s on first call (~5× speedup); subsequent calls within the same uvicorn worker are faster still since RoBERTa stays loaded.
+
+### Next steps (post-survey-assembly)
+
+1. **Send `Survey/PLAN.md` + `survey_items.csv` to Mari Carmen** for sign-off (0–100 scale, rubric triad, QC techniques, ethics paragraph). The methodology spine is now quadruple-anchored (Graham 2013 + Graham 2017 + Alva-Manchego 2020 + Alva-Manchego 2021/Scialom 2021).
+2. **Step 22g — bad-reference items.** Run `scripts/generate_bad_references.py --sources …/selected_sources.csv --out …/bad_references_draft.csv`, then manual-review each row. ~30 LLM calls, ~2 min wall, ~30 min review. **Cannot ship the survey without this.**
+3. **Build the Google Form + Apps Script** (Survey/PLAN.md §6) for randomised 20-item subsets per respondent + QC injection.
+4. **Pilot with 1–2 respondents** to time median completion (decision rule: cut to 16 items if median > 25 min).
+5. **Step 23a** — re-export `mendeley.bib` so the five methodology citations resolve (Graham 2013, Graham 2017, Alva-Manchego 2020, Alva-Manchego 2021, Scialom 2021).
+
+### Step 22b' — Option B: true 3-step agentic pipeline (2026-05-04, late evening)
+
+**Why.** The agentic-vs-monolithic verification surfaced a load-bearing tension: the original "agentic" implementation (single LLM call with structured chain-of-thought output requesting `figurative_expressions`, `explanation`, `literal_paraphrase`) was not the multi-step pipeline RQ2 actually claims to test (`detection → explanation → transformation`). Reframing the RQ to match the implementation was an option; we chose Option B and rebuilt the system to match the RQ.
+
+**What changed.** New `TaskType.PIPELINE_REPLACE`. The `pipeline_replace` graph is three sequential nodes, each its own LLM call: `pipeline_detect_*` (reuses the existing detection prompt), `pipeline_explain_*` (new prompt, structured output `[{expression, meaning}, …]`), `pipeline_transform_*` (new prompt, free-text rewrite using sentence + detected spans + per-expression meanings as context). State carries `explanations_pipeline` between steps and persists alongside the prediction document for post-hoc H4 analysis. Edge cases (no expressions detected) short-circuit to empty explanations + input-unchanged transform. Files touched: `models/python/models/types/shared.py`, `models/python/models/operations/prompts.py`, `models/python/models/entities/prediction.py`, `prompts/{idiom,metaphor}/{explain,transform}_*.txt`, `services/api/src/workflows/{state,nodes,graph}.py`, `services/api/src/routes/runs.py`. Smoke-test caught one prompt-engineering issue: the original transform prompt had an inline worked example that Llama-3.1-8B copy-pasted verbatim instead of producing a transformation; fixed by removing the example and adding an `=== INPUT ===` marker before the actual data.
+
+**Detection–replacement decoupling.** Re-fired the survey-pool generation on 8B with `pipeline_replace` (run `a419b37e`, 28/28 success on the 30 selected SemEval idiom sources) and the report-grade re-runs at limit=200 (run `bd7736e1` SemEval idiom dtr; run `872e3c75` VU metaphor dtr). Compared head-to-head against the previous canonical single-call CoT runs (same model, same dataset, same example slice via deterministic ORDER BY):
+
+| Variant | f1_sent | f1_tok | f1_span | BLEU | BERT_F1 |
+|---|---|---|---|---|---|
+| **SemEval idiom dtr — single-call v1** (`590ee73c`) | 0.480 | — | 0.163 | 0.397 | 0.914 |
+| **SemEval idiom dtr — single-call v2** (`ba235517`) | 0.492 | — | 0.162 | 0.400 | 0.915 |
+| **SemEval idiom — pipeline_replace** (`bd7736e1`) | **0.256** | — | 0.142 | 0.430 | 0.915 |
+| **VU metaphor dtr — single-call v1** (`5e1fff1f`) | 0.553 | 0.230 | 0.067 | — | — |
+| **VU metaphor dtr — single-call v2** (`af7b45f0`) | 0.551 | 0.229 | 0.065 | — | — |
+| **VU metaphor — pipeline_replace** (`872e3c75`) | **0.435** | 0.172 | 0.049 | — | — |
+
+**Finding (load-bearing for the discussion chapter):** moving from single-call structured-chain-of-thought to a true 3-step pipeline **reduces detection F1 by 12–24 percentage points on Llama-3.1-8B**, while replacement-side metrics (BLEU, BERTScore F1) are essentially unchanged.
+
+**Mechanism.** Pipeline.detect uses the standalone detection prompt — the same prompt used for detection-only runs. Compare:
+- `pipeline_replace` SemEval idiom f1_sent = 0.256
+- detection-only `f4b87dc3` SemEval idiom f1_sent = 0.255 (a different run on a different example slice, but the prompt is identical)
+- single-call dtr v1/v2 SemEval idiom f1_sent ≈ 0.49
+
+Single-call dtr's structured-output schema requires the model to commit detected spans **alongside** a replacement field, all in one inference. That auxiliary "you must produce a paraphrase too" pressure pulls along sharper detection — the schema scaffolds the detection by tying it to a downstream commitment. When detection and replacement are split into separate calls, the detection step loses the scaffold and reverts to standalone-detection F1.
+
+**Why this matters for the report.** This is a *clean dissociation* of two architectural moves that the literature usually conflates: "structured intermediate reasoning in the prompt" vs "decomposed multi-step inference at the workflow level". Tian 2024 (TSI) and Gao 2025 (PASS) both achieve their lifts by combining both. Our pipeline ablation isolates the second move alone (multi-step inference) and finds it *trades detection precision for architectural clarity* on Llama-3.1-8B. That's a real RQ2 finding — H2 (decomposition > monolithic) is *not* trivially supported on auto-metrics and the survey is what arbitrates whether the rubric-rated replacement quality justifies the detection cost.
+
+**Replacement quality on the 30-source survey pool** (run `a419b37e`, 28/28 success):
+
+| Source | Old single-call output | New pipeline output |
+|---|---|---|
+| src_00 ("Long story short") | "To summarize" | "to summarize or get to the point quickly" |
+| src_01 ("bear the cross") | "heavy burden" *(missed the actual idiom — substituted "heavy cross")* | "endure or cope with" *(detected the idiom correctly; verbose substitution)* |
+| src_03 ("beauty sleep is priceless") | "sleep is extremely valuable" | "the value of a good night's sleep is immeasurable" |
+| src_04 ("copy cat") | "imitative" | "a design that closely imitates another brand's style" *(more contextually grounded)* |
+
+All 28 outputs differ from the single-call agentic — the pipeline architecture genuinely changes the generated paraphrase, not just the underlying scaffolding. Some outputs are cleaner (src_03, src_04: more substantive context-aware substitutions); some are slightly worse (src_01, src_02: verbose substitutions that don't fit gracefully). This is the heterogeneity the rubric triad (grammaticality / meaning preservation / simplicity) is built to surface — the survey will tell us which way the trade lands on human judgement.
+
+**RQ/H status.** With the pipeline implementation, RQ2 and H2 keep their original wording verbatim — no rephrase needed. H4 becomes much more directly testable post-survey because explanations are now first-class persisted artefacts (`PredictionData.intermediate_explanations`); we can correlate explanation quality (LLM-as-judge or lexical heuristics) with rubric ratings without rebuilding anything.
+
+**Open work.**
+- 70B-AWQ pipeline run on the 30 sources (cluster swap pending; survey condition 3).
+- 70B-AWQ pipeline runs on the 200-example deterministic slice for RQ1 within-family scale comparator (deferred — long wallclock at concurrency=1; not blocking the survey).
+- Re-assemble `survey_items.csv` once the 70B pipeline completes; condition 1 = 8B pipeline (`a419b37e`), condition 2 = 8B monolithic (`c8a2c8e3`, unchanged), condition 3 = 70B pipeline (pending).
+- Update `wiki/thesis/research-questions.md` and `MARI_CARMEN_KIT` to reflect the pipeline numbers; the methodology stories on detection–replacement decoupling and structured-CoT vs true-pipeline tradeoff are new content for `discussion.tex`.
+
+### Step 22 — survey-pool re-assembly + canonical re-runs after stack restart (2026-05-05)
+
+**Context.** Couchbase volume isn't mounted. A stack restart on 2026-05-04 evening (to pick up `VLLM_CONCURRENCY=1` for the 70B condition; `docker restart` doesn't propagate Polytope value-store changes to a container's already-set env, so a full container recreate was needed) wiped Couchbase. All run documents from earlier in the day were lost: the canonical 8B 21f/21g sweep, the 8B pipeline 200-example runs, and the survey-pool runs. Datasets re-ingested cleanly; example_ids are deterministic from source so `selected_sources.csv` and `bad_references_final.csv` remained valid anchors.
+
+**Survey conditions re-run with new IDs:**
+- Condition 1 (8B pipeline): run `aea60b3d-7b30-41c2-a3b8-4472d280a9f0` — 28/28 success.
+- Condition 2 (8B monolithic): run `460d4b15-ffc7-44a2-b38c-4034cd6b8e29` — 28/28 success.
+- Condition 3 (70B pipeline): run `10366af9-d22d-4040-8075-ea1942298370` — 28/28 success (cluster on 70B-AWQ, ~25 min wallclock at concurrency=1).
+
+`survey_items.csv` re-assembled with these three run IDs (84 rows = 28 sources × 3 conditions). `respondent_assignments/respondent_01.csv` and `respondent_01_form.{md,pdf}` re-derived from the new pool with seed=1; same deterministic slice (bad-ref sources `src_04, src_19`, repeats `src_15, src_10`, system mix 7-8B-agentic / 5-70B-agentic / 4-8B-mono) but the `system_replacement` cells now come from the pipeline runs.
+
+**Spot-check observations.** All three conditions produce noticeably different replacements per source (no condition is collapsing to identical outputs). Notable failure mode worth flagging in the discussion: 8B pipeline misses detection on `src_05` (idiom *poison pill*) and returns the input sentence unchanged — survey will rate this with `100/100/baseline` on grammaticality / meaning preservation / simplicity, which is the honest signal that pipeline.detect's standalone detection prompt under-specifies on certain sources.
+
+### Step 21 — canonical 8B re-runs (2026-05-05, post-restart, deterministic ORDER BY)
+
+All 8 report-grade 8B runs re-fired sequentially after the dataset re-ingest. Numbers are within ≤ 0.5pp of the pre-restart canonical values on every metric, confirming that the deterministic `ORDER BY t.example_id` we added on 2026-05-04 produces reproducible slices. New run IDs (the previous IDs from `notes.md` 2026-05-04 are stale — Couchbase wiped):
+
+| Variant | run_id | f1_sent | f1_tok | f1_span | BLEU | BERT_F1 |
+|---|---|---|---|---|---|---|
+| **Detection-only** | | | | | | |
+| 21f.vu.metaphor.detect.v1 | `1afd4cf1` | 0.430 | 0.176 | 0.049 | — | — |
+| 21f.semeval.idiom.detect.v1 | `cfe4f798` | 0.255 | — | 0.141 | — | — |
+| **Single-call CoT (detect-then-replace, structured output)** | | | | | | |
+| 21g.vu.metaphor.dtr.v1 | `eb415563` | 0.556 | 0.232 | 0.068 | — | — |
+| 21g.semeval.idiom.dtr.v1 | `b2b174ea` | 0.480 | — | 0.163 | 0.398 | 0.914 |
+| 21g.vu.metaphor.dtr.v2 | `821c8e59` | 0.554 | 0.231 | 0.065 | — | — |
+| 21g.semeval.idiom.dtr.v2 | `d6bc60b0` | 0.492 | — | 0.162 | 0.400 | 0.915 |
+| **Pipeline (3-step decomposed: detect → explain → transform)** | | | | | | |
+| pipeline.vu.metaphor | `60a0390a` | 0.430 | 0.171 | 0.048 | — | — |
+| pipeline.semeval.idiom | `3551e201` | 0.255 | — | 0.141 | 0.430 | 0.916 |
+
+**Detection-replacement decoupling, now empirically airtight.** With the same example slice for detection-only and pipeline runs, the detection F1 numbers are *identical to three decimals*: VU metaphor 0.430 / 0.430, SemEval idiom 0.255 / 0.255. This rules out sample-shift noise as an explanation. The pipeline.detect step uses the standalone detection prompt and gets the same F1 the standalone prompt gets — full stop. The single-call CoT's +12pp (VU) / +22pp (SemEval) detection lift over both detection-only and pipeline is therefore attributable to the structured-output schema's auxiliary-replacement field forcing the model to commit detected spans, not to anything specific about chain-of-thought reasoning content.
+
+**Replacement-side comparison (SemEval idiom only — VU has no gold paraphrase):**
+- Single-call CoT v1 → BLEU 0.398, BERTScore F1 0.914
+- Single-call CoT v2 → BLEU 0.400, BERTScore F1 0.915
+- **Pipeline → BLEU 0.430, BERTScore F1 0.916**
+
+Pipeline shows a +3pp BLEU lift over single-call CoT. **Caveat for the report:** when the pipeline misses detection (about half the time on the deterministic slice, since detection F1 = 0.255), the transform step short-circuits and returns the input sentence unchanged. SemEval Task B gold paraphrases differ from the input by exactly the idiom replacement — typically 2-5 words in a sentence of 20-30 — so the input itself shares 80-90% of its tokens with gold. The pipeline's "no detection → return input" pathway therefore contributes high BLEU values (effectively scoring against itself + gold's shared content), inflating the average. The +3pp BLEU lift is partially this artefact, partially a real lexical-precision gain on examples where detection succeeds and the pipeline's explain → transform produces a tighter substitution than CoT-in-one-call. The report should foreground this caveat in the methodology chapter and consider reporting BLEU only on the subset where both systems detected.
+
+**v1 vs v2 single-call CoT remains a no-op on Llama-3.1-8B** (BLEU 0.398 / 0.400, BERTScore 0.914 / 0.915, sentence F1 0.480 / 0.492) — same finding as 2026-05-04. The chain-of-thought scaffold's value does not transfer from `gemini-3-flash-preview` (where Step 20 A/B showed +11pp BLEU for v2) to mid-size open-weights at this size class.
+
+**RQ1 within-family scale at 200-example slice.** Still pending the 70B pipeline + dtr 200-example runs; deferred behind the survey. The 30-source survey-pool result already shows 70B detection f1_sent 0.767 (single-call agentic v2) vs 8B 0.609 (+15.8pp) — direction is established; the 200-example numbers will pin the magnitude for the report's RQ1 table.
+
+### Step 21 — 70B canonical re-runs at 200-example slice (2026-05-05, evening, in progress)
+
+Cluster swapped to 70B-AWQ. Firing the within-family scale comparator runs sequentially with checkpoints between each. Status as of run 3 of 6 done:
+
+**Detection-only row (complete, 200 examples each, deterministic ORDER BY):**
+
+| Dataset | 8B run | 8B f1_sent | 70B run | 70B f1_sent | Δ | 8B f1_span | 70B f1_span | Δ |
+|---|---|---|---|---|---|---|---|---|
+| VU metaphor | `1afd4cf1` | 0.430 | `26dc7cd2` | 0.635 | **+20.5pp** | 0.049 | 0.125 | +7.6pp |
+| SemEval idiom | `cfe4f798` | 0.255 | `be7dd99f` | 0.435 | **+18.0pp** | 0.141 | 0.225 | +8.4pp |
+
+70B's detection precision-token jumps: VU 0.252 → 0.429, SemEval 0.133 → 0.215 — much more selective. Recall trails (VU recall_token 0.135 → 0.188; SemEval recall_span 0.160 → 0.250) but is still positive. The +18–20pp sentence-F1 lift confirms and extends the 30-source survey-pool finding (70B 0.767 vs 8B 0.609 on agentic v2 dtr).
+
+**Detect-then-replace v2 row, complete:**
+
+| Dataset | 8B run | 8B f1_sent | 70B run | 70B f1_sent | Δ |  8B BLEU | 70B BLEU | 8B BERT_F1 | 70B BERT_F1 |
+|---|---|---|---|---|---|---|---|---|---|
+| VU metaphor | `821c8e59` | 0.554 | `df765b22` | **0.351** | **−20.3pp** | — | — | — | — |
+| SemEval idiom | `d6bc60b0` | 0.492 | `92941662` | **0.383** | **−10.9pp** | 0.400 | 0.423 | 0.915 | 0.915 |
+
+**Schema-lift inversion confirmed across both phenomena.** Comparing each model's dtr v2 sentence F1 against its own detection-only baseline:
+
+| Dataset | 8B det-only | 8B dtr v2 | 8B Δ | 70B det-only | 70B dtr v2 | 70B Δ | direction |
+|---|---|---|---|---|---|---|---|
+| VU metaphor | 0.430 | 0.554 | **+12pp** | 0.635 | 0.351 | **−28pp** | inverted |
+| SemEval idiom | 0.255 | 0.492 | **+22pp** | 0.435 | 0.383 | **−5pp** | inverted (smaller) |
+
+Both phenomena show the same direction: dtr v2's structured-output schema is a +12 to +22pp lift on 8B and a −5 to −28pp drop on 70B from each model's own detection-only baseline. Magnitude of the inversion is much larger on metaphor (40pp swing) than on idiom (27pp swing) but direction is consistent across both datasets. Mechanism is consistent: 70B's token precision climbs in dtr v2 (becomes more selective) while recall drops (over-commits to "no figurative content") when the schema demands a paraphrase commitment alongside detection.
+
+**Replacement-side at scale dissociation also confirmed at 200-example slice.** SemEval idiom dtr v2: 8B BLEU 0.400 → 70B BLEU 0.423 (+2.3pp, within sample noise); BERTScore F1 tied at 0.915. Detection-side scale lifts of +18 to +20pp do not propagate to replacement-side metrics — same dissociation observed on the 30-source survey-pool comparison (BLEU 0.061 → 0.058, BERTScore 0.851 → 0.858) now confirmed at 200 examples. The within-family scale comparator shows scale tightly tracks detection F1 but saturates for replacement-side automatic metrics.
+
+**This is a model-dependence finding worth a paragraph in the discussion chapter.** Prompt-engineering wins on small models can not just fail to transfer at scale — they can *invert*. The same v2 chain-of-thought + structured-output prompt that gives 8B a +12 to +22pp detection lift over its detection-only baseline costs 70B −5 to −28pp from its own detection-only baseline.
+
+**Pending runs in this session (in order):** #5 70B pipeline VU metaphor (in flight, ~1.5h); #6 70B pipeline SemEval idiom (~1.5h). Each completes a row in the canonical RQ1 within-family scale table and creates a natural bail point.
+
+**Run #5 (70B pipeline VU metaphor `b9698d70`) — pipeline.detect ≡ detection-only at 70B confirmed.** All seven detection metrics match the 70B detection-only VU run (`26dc7cd2`) to three decimals: f1_sent 0.635, f1_tok 0.262, f1_span 0.125, p_tok 0.429, r_tok 0.188, p_span 0.259, r_span 0.093 — identical.
+
+**Run #6 (70B pipeline SemEval idiom `56f19b8c`) — equivalence holds in all 4 of 4 (model × dataset) cells.** 70B SemEval pipeline f1_sent=0.435 vs 70B SemEval detection-only `be7dd99f` f1_sent=0.435; f1_span=0.225 vs 0.225. Identical. The pipeline.detect ≡ detection-only equivalence is now confirmed at both scales (8B, 70B) and on both phenomena (VU metaphor, SemEval idiom) — empirically airtight. Whatever the pipeline architecture buys, it does not change the detection step's F1.
+
+### Canonical RQ1 within-family scale table (complete, 200-example deterministic slice, T=0)
+
+| Variant | 8B run | 8B f1_sent | 70B run | 70B f1_sent | Δ scale | 8B BLEU | 70B BLEU | 8B BERT_F1 | 70B BERT_F1 |
+|---|---|---|---|---|---|---|---|---|---|
+| Detection / VU metaphor | `1afd4cf1` | 0.430 | `26dc7cd2` | 0.635 | **+20.5pp** | — | — | — | — |
+| Detection / SemEval idiom | `cfe4f798` | 0.255 | `be7dd99f` | 0.435 | **+18.0pp** | — | — | — | — |
+| dtr v2 / VU metaphor | `821c8e59` | 0.554 | `df765b22` | 0.351 | **−20.3pp** | — | — | — | — |
+| dtr v2 / SemEval idiom | `d6bc60b0` | 0.492 | `92941662` | 0.383 | **−10.9pp** | 0.400 | 0.423 | 0.915 | 0.915 |
+| Pipeline / VU metaphor | `60a0390a` | 0.430 | `b9698d70` | 0.635 | **+20.5pp** | — | — | — | — |
+| Pipeline / SemEval idiom | `3551e201` | 0.255 | `56f19b8c` | 0.435 | **+18.0pp** | 0.430 | 0.414 | 0.916 | 0.915 |
+
+### Three findings empirically airtight after the full sweep
+
+1. **Pipeline.detect ≡ detection-only across all 4 (model × dataset) cells.** Detection F1 is identical to 3 decimals on all seven token, span, and sentence-level metrics whenever the same detection prompt is used in standalone vs pipeline mode. The pipeline architecture is *scale-invariant for detection*: whatever it buys lives in the replacement step.
+2. **The dtr v2 schema-commitment lift inverts at scale on both phenomena.** Direction is consistent across VU metaphor (+12pp → −28pp swing) and SemEval idiom (+22pp → −5pp swing). The magnitude is larger on metaphor than on idiom but the inversion holds in both. Mechanism: 70B's token precision climbs in dtr v2 mode while recall drops; the model is well-calibrated enough that the schema commitment over-commits to "no figurative content" on borderline cases instead of scaffolding the decision.
+3. **Detection-replacement scale dissociation confirmed at the 200-example slice.** Detection F1 lifts +18 to +20pp from 8B → 70B; replacement-side BLEU and BERTScore are tied or marginally lower at 70B. Notably, the +3pp BLEU advantage that pipeline shows over CoT-single-call at 8B (0.430 vs 0.400) **shrinks to zero at 70B** (0.414 vs 0.423) — the pipeline architecture's BLEU advantage is concentrated at small scale and washes out at larger scale. Same caveat as before: when pipeline misses detection it short-circuits to "return input unchanged"; the input shares ~85% of tokens with the gold paraphrase, inflating BLEU on those examples. The 8B pipeline's higher BLEU is therefore partially the "no-detect → identity-output" artefact, partially genuine lexical-precision gain on detected examples. The fact that this advantage *disappears at 70B* (where detection succeeds more often) is consistent with the artefact framing.
+
+**Open work post-survey.**
+- ~~Manual review of `bad_references_draft.csv`~~ — done 2026-05-05; 28 OK, 2 sources dropped (`src_17` "head hunter", `src_22` "foot and ankle"; both judged literal-in-context), 2 regenerated; final `bad_references_final.csv` signed off.
+- ~~Mari Carmen sign-off on `MARI_CARMEN_KIT.pdf`~~ — kit superseded by an email summary (2026-05-05) sent with the seeded-sample form (https://forms.microsoft.com/e/FTdiVdKNqq), survey design summary, methodology citations, distribution plan, and request for ethics paragraph. **Awaiting Mari Carmen's response.**
+- ~~Build the actual MS Form from `respondent_01_form.pdf`~~ — done 2026-05-05 (seeded sample for Mari Carmen's review). Forms 2–16 to be generated post-sign-off.
+- `mendeley.bib` re-export for the methodology citations (Step 23a).
+- Discussion-chapter prose pass synthesising the three model-dependence findings into the broader argument that *prompt-engineering wins on small or hosted models give an unreliable read on what helps the deliverable system at scale.*
+- Per-respondent forms 2–16 — generate after Mari Carmen sign-off (seed=2..16 deterministic from the assembler script).
+- Pilot timing: send to 1–2 friendly respondents to measure median completion. Decision rule per `Survey/PLAN.md` §7: cut to 16 items per respondent if >25 min; user's email mentions a tighter "10 min" threshold so this may be cut more aggressively.
+
+## 15-05-2026
+
+### Mari Carmen round-1 feedback on the seeded sample MS Form
+
+Mari Carmen reviewed `https://forms.microsoft.com/e/FTdiVdKNqq` (the respondent_01 form sent 2026-05-05) and replied with four points. All four incorporated this session.
+
+1. **Terminology — "simplification" → "easy2read adaptation"**. UPM OEG research-line term, links to https://www.inclusion-europe.eu/easy-to-read/. Updated in the form's intro paragraph (already done in the new PDF Jelle added at `Vault/1 - Thesis/Survey/UPM Idiom Replacement Evaluation.pdf`) and reflected in `Survey/PLAN.md` and `Survey/README.md`.
+2. **Eligibility relaxation — accept ≥10-year residents of English-speaking countries**, not just native speakers. Opens distribution to Mari Carmen's Spanish/Italian colleagues in England. New eligibility question is a 3-way choice with branching: "native English" / "non-native but ≥10 years resident" / "neither (form ends)". Updated `Survey/PLAN.md` §3. Affects the form template — the existing MS Form Q1 ("Are you a native speaker of English? Yes/No") needs replacing.
+3. **Non-mandatory item ratings.** A tired respondent who has rated 12 items should be able to submit a partial form rather than abandoning. Rating fields now `Required = OFF`; consent + eligibility remain `Required = ON`. PLAN.md §3 + §5 updated to handle missing values: per-dimension QC checks, minimum-10-of-20 completion threshold for inclusion, no imputation in aggregation. Affects the form template — every numeric question in the existing MS Form needs `Required` toggled off.
+4. **Ethics paragraph.** Mari Carmen provided the OEG group's standard data-protection paragraph (Spanish version linked at https://oeg.fi.upm.es/protecciondatos.html). Verbatim text added to `Survey/PLAN.md` §3 and to the survey PDF Jelle ingested.
+
+### Item 13/20 — what actually broke
+
+User flagged that respondent_01's item 13 "looks like the same sentence twice". Investigation: it's not a duplicate.
+
+Item 13 in `respondent_01.csv` is `src_18` rendered by `70b_agentic`. The `assemble_survey_items.py:128` design (intentional, decision 22f) sets the form's `displayed_detected_expression` to the **SemEval gold** so all three system conditions on the same source share the same anchor (annotators see the same "detected idiom" regardless of which system produced the replacement). But the SemEval Task A gold for `train_zero_shot.EN.131.21` is contaminated: it lists `"kick the bucket; spill the beans; keep an eye on; end suddenly; run to their homes for shelter"` — the first three are canonical-idiom training examples not present in the sentence at all. Combined with the 70B pipeline correctly returning the input unchanged (because there's no real idiom in this sentence — Mari Carmen's gold-annotation noise here), the rendered form item has (a) hallucinated detection field, (b) unchanged replacement, which collectively look broken to a respondent.
+
+**Fix decision:** drop `src_18` from `selected_sources.csv`. Pool drops from 28 sources → 27 sources × 3 conditions = 81 items in `survey_items.csv`. Math still works (81 / 16 × 3 = ~16 respondents minimum; we're overprovisioning to 25).
+
+Optional follow-up if cluster bring-up is convenient: pick a 28th clean candidate from `survey_candidates_v2.csv` and run 3 conditions for it, restoring the 28-source pool. Not blocking.
+
+The "show gold for fairness across conditions" design decision (`assemble_survey_items.py` docstring) is sound and stays — but it requires gold-cleanliness QC per source before sourcing into the pool. Lesson for future iterations: scan `gold_detected_expression` for suspicious multi-canonical-idiom contamination patterns.
+
+### Survey infrastructure — checked-in deterministic form builder
+
+`respondent_01_form.{md,pdf}` was built in an earlier Claude session via an ad-hoc script not committed. This session: write `e2r-adaptation/scripts/build_respondent_form.py` — deterministic, seed-based. Reads `selected_sources.csv` + `survey_items.csv` + `bad_references_final.csv` from the vault, writes `respondent_NN.csv` + `respondent_NN_form.md`. Filters out `src_18` at load time so it remains in the historical CSVs for traceability. Per-respondent sampling: 16 distinct (source, system) pairs drawn uniformly with system-class balancing (~5-6 per system), 2 of the 16 marked for repeat-pair, 2 additional distinct sources used as bad-references. Position ordering: ≥ 5 items between first and second showing of any repeat pair; bad-refs interleaved.
+
+Run for respondents 1..25 (overprovisioned beyond the 16-minimum). Output to `Vault/1 - Thesis/Survey/respondent_assignments/`. The user manually builds each MS Form from `respondent_NN_form.md`; distribution order matches the contacts list in `respondents.md` (Gary Faulds → respondent_01; Thy Nguyen → respondent_02; …; Shelley Sorkin → respondent_15; 16–25 reserved for Mari Carmen's contacts + drop-off buffer).
+
+### Bibliography — pending Step 23a re-export still open
+
+Mendeley re-export to pick up Graham2013, Graham2017, Alva-Manchego2020, Alva-Manchego2021, Scialom2021 in `mendeley.bib` still pending. Not blocking the survey work but blocks the methodology chapter's citations from resolving.
+
+
+### Survey verification + form-builder upgrade
+
+Comprehensive verification of all conditions the surveys should fulfill (33 conditions across source pool, survey_items, bad_references, per-respondent integrity, coverage, Mari Carmen feedback compliance, determinism). Initial pass: 31/33. The 2 fails were both coverage at N=16: stochastic uniform-random sampling left some (source, system) pairs at 0 ratings (78/81 covered) and many at <3 ratings.
+
+**Upgrade: switched the form-builder to a greedy-batch sampler with rotated quota.** New design in `e2r-adaptation/scripts/build_respondent_form.py`:
+
+1. `build_batch_assignments(pool, max_seed)` — walks seeds 1..max_seed sequentially, maintaining a global coverage counter. For each respondent picks the 16 lowest-coverage (source, system) pairs under the constraints (a) no source repeat per respondent and (b) per-respondent system quota. Tie-breaks via `random.Random(seed*7919 + 17)`. Greedy doesn't look ahead, so the first k respondents in a batch of N>k are byte-identical to a standalone batch of size k — **prefix-stable**.
+
+2. **Rotated 6/5/5 quota.** The "6-slot" system cycles each seed: seed 1 → 8b_agentic gets 6, seed 2 → 8b_monolithic gets 6, seed 3 → 70b_agentic gets 6, repeat. Without rotation the fixed 6/5/5 left 8b_monolithic and 70b_agentic each with 80 ratings across 16 respondents (80/27 = 2.96 avg) — pigeonhole guarantees some pairs at 2. With rotation each system gets ~85 ratings (85/27 = 3.15 avg) and greedy can distribute to **≥3 per pair**.
+
+3. **Per-respondent randomisation** (bad-ref selection from the 11 unused sources, slot layout including bad-ref half-split + repeat-pair gap-≥5, which-2-of-16-to-repeat) still uses `random.Random(seed)` for per-seed independence on those concerns.
+
+Re-verification with 36 conditions (3 new: prefix-stability D1, repeat determinism D2, final-state file count D3): **36/36 PASS**. At N=16: 81/81 pairs covered, distribution tight to {3, 4} only — theoretical floor for 256 ratings / 81 pairs. At N=35: min=6, median=7, max=7.
+
+All 35 forms regenerated (`respondent_01_form.md` through `respondent_35_form.md` + matching `.csv` ledgers). Distribution order matches `respondents.md`: #01 Gary Faulds (redeploys current MS Form), #02-#15 the other personal contacts, #16+ for Mari Carmen's contacts + drop-off buffer.
+
+
+## 20-05-2026
+
+### Survey distribution: Wave 1 sent
+
+20 MS Forms built (URLs 1–20). Distribution today:
+
+- **URLs 1–15 sent to personal contacts** (WhatsApp / Messenger). Final assignment: Gary Faulds (#1), Thy Nguyen (#2), Samir Moorhouse (#3), Beth Moorhouse (#4), Filippa Davidsson (#5, Messenger), Aidan Catterall Byrne (#6), Cole Triedman (#7), Tess Devol (#8), Tess' Boyfriend (#9), Emma Raible (#10), Bryn (#11), Dino Hamidovic (#12), Nasim Ghorbani-Elizeh (#13), Tess' Mom (#14), Tess' Mom Boyfriend (#15).
+- **Five names from the original `respondents.md` list moved to backlog (not contacted):** Russell Stadler, Jesse Clemens, Lucy Santerre, Olivia Bailey, Shelley Sorkin. Five new contacts swapped in via Tess's family/friend cluster (slots 8, 9, 11, 14, 15).
+- **URLs 16–20 handed to Mari Carmen** for her long-term-resident colleagues (per 2026-05-15 eligibility relaxation). Anonymous distribution: she picks recipients, we do not track who got which URL, visibility is aggregate response count only via MS Forms backend. Email kept brief, no tracking ask, dropped the "let me know who got what" line per privacy intent.
+- **URL 21 built, assigned to Tess' Dad, sent via WhatsApp.**
+
+Contact-message template saved at `Vault/1 - Thesis/Survey/MESSAGE_CONTACTS.md` (WhatsApp/LinkedIn variants); per-respondent URL registry at `Vault/1 - Thesis/Survey/form_urls.md`; respondent status at `Vault/1 - Thesis/Survey/respondents.md`; Mari Carmen distribution email at `Vault/1 - Thesis/Survey/EMAIL_MARI_CARMEN_DISTRIBUTION.md`.
+
+Wave 1 total addressable: 16 personal contacts (URLs 1–15, 21) + 5 Mari Carmen pool = **21 sent**. Target ≥17 completions. Backlog of 5 + URLs 22–35 pre-built in `respondent_assignments/` available if Wave 2 needed.
+
+Pilot intent: ask 1–2 close contacts to time the run; if completion pushes past 10 min, cut items per respondent and reissue.
+
+
+## 03-06-2026
+
+### Survey responses merged + first analysis (pre Mari Carmen meeting)
+
+22 MS Forms xlsx exports merged and analysed. New scripts in `e2r-adaptation/scripts/`: `merge_survey_responses.py` (xlsx + assignment ledgers → `Survey/results/responses_long.csv`, 440 rows) and `analyze_survey_responses.py` (PLAN §4/§5: QC, per-annotator z-scores, paired RQ comparisons, charts).
+
+- **QC: 20/22 kept.** #1 and #13 dropped on the repeat-pair filter (mean |diff| 31.7 / 30.0 > 25). No bad-ref failures. Partial submissions handled (e.g. #22 rated 11/20 items, passes the ≥10 threshold). §5a bad-ref rule adapted: compared against respondent's own real-item meaning mean (sampler never repeats the bad-ref's source as a real item); documented for the methodology chapter.
+- **Coverage: 71/81 pairs ≥3 ratings, 10 pairs at n=2** after the drops. Form #6 (Aidan) completed per backend but the export file is missing: re-export to recover. Bryn (#11) completed since 06-01. Residents: 3/22 (forms 2, 5, 20), better than the form-pool tracking implied.
+- **Headline numbers (raw means gram/meaning/simp):** 8B agentic 83.1/81.6/60.6 · 8B monolithic 85.4/72.6/64.1 · 70B agentic 78.4/76.4/51.9.
+- **RQ2:** agentic wins meaning preservation (+0.31 z paired by source, p≈0.06–0.08 marginal); monolithic slightly better on grammar/simplicity (n.s.); composite tied. Human-eval resolution of the BLEU-vs-BERTScore disagreement: decomposition buys meaning fidelity at no composite cost.
+- **RQ1:** scale does not improve replacement; 70B significantly worse on simplicity (Wilcoxon p=0.026), marginally worse composite. Fourth model-dependence finding: scale doesn't buy human-perceived quality either.
+- **Simplicity is the weak dimension across all systems** (raw 52–64 vs 78–85 grammaticality): meaning and grammar preserved, but outputs only moderately easier to read.
+- 108 free-text alternative replacements collected (qualitative material for discussion).
+- Meeting prep doc: `Vault/1 - Thesis/Meetings/2026-06-03 Meeting w- Mari Carmen - prep.md` (results + draft-date proposal + storyline/frameworks agenda).
+
+### Mari Carmen meeting (11:15, 12 min): endgame timeline locked
+
+- **Full draft to Mari Carmen Jun 29 → her feedback ~Jul 3 → submission Jul 7 → presentation ~Jul 14 (online slot, via Elena).** Her free reading weeks are Jun 15 and Jun 29; she has a conference the week of Jun 22. Incremental chapters welcome but not promised.
+- **Metaphor drop from human eval accepted** ("explain that in the document, no problem"). **22 responses endorsed as sufficient** given exam season; no resident-stratum chase needed.
+- Survey headline previewed only ("bigger models not necessarily better"); she reads the details in the draft. Storyline/frameworks/§5a items deferred to the draft review.
+- She offered to **review presentation slides** too. Defence: her presential UPM slot may clash with the online slot; Isam as fallback attendee; sessions are public.
+- Everything between now and Jun 29 is report writing: survey results into rq3/rq2 + discussion, then intro + conclusion.
+
+## 10-06-2026
+
+### Writing plan locked: theme, structure, report scaffolding (Claude session)
+
+Full critical pass over the wiki synthesis, the report, and the experiment numbers to pick the thesis's central recurring theme and lock the report structure. Plan documents: `thesis-report/WRITING_PLAN.md` (authoritative) + `% === WRITING GUIDE ===` comment blocks embedded per section in every chapter `.tex` + updated `wiki/thesis/chapter-outline.md` / `research-questions.md`.
+
+**Theme locked: "structure over scale."** Reliable quality in LLM-based figurative-language E2R adaptation comes from explicit task structure (agentic decomposition) and human-grounded evaluation, not from model scale or prompt engineering. Supporting frames: "the missing E2R guideline" (intro) and "the measurement gap" (methodology). All four model-dependence findings, the RQ2 meaning-preservation result, and the 70B simplicity loss feed it. Honesty discipline baked into the guides: structure is the *reliable, inspectable* lever, not the always-winning one (pipeline.detect = detection-only is conceded in a promoted section 6.4; composite tied; mandated hedge wordings for RQ2 marginality and the 70B simplicity finding are in WRITING_PLAN.md and repeated in the chapter guides).
+
+**Structure decisions (with Claude, options weighed):** per-RQ chapters retained (lowest rework risk before Jun 29); **RQ4 dissolved** (chapter deleted, observability becomes Discussion 8.3, qualitative); **H4 stated as untested** in 1.3 with rationale + proposed correlation design in 8.5 (future work).
+
+**Report prep executed (compile clean, 42 pp):**
+- Deleted `rq4_observability.tex` + template orphans (`intro.tex`, `conclusions.tex`, `development.tex`); removed the rq4 input from `main.tex`; fixed the dangling `sec:rq4` ref in `system_design.tex`; added the missing `sec:rq1` label.
+- Survey tables inserted with final numbers from `Survey/results/RESULTS.md`: `tab:rq2-human-eval` (RQ2 paired comparison incl. t/Wilcoxon p), `tab:rq3-survey-results` (raw + z by system), `tab:rq3-survey-qc` (response/QC stats), `tab:model-dependence` (the four-finding synthesis table for 8.1), `tab:rq1-supervised` (stub for the 5.4 lookup).
+- Stale survey numbers fixed everywhere: 30 sources/90 items/~17 respondents to the as-run 27 sources x 3 = 81 items (30 sampled, 2 dropped in bad-ref review, src_18 contamination drop), 22 collected, 20 kept, 71/81 >=3 ratings. Pool-provenance paragraph rewritten in `rq3_replacement.tex`; eligibility wording now includes the 3 long-term residents.
+- `methodology.tex` aligned to the as-run analysis (the 5a deferred item): QC filters now describe completion <10/20, repeat-pair mean |diff| > 25 (drop), bad-ref vs respondent's own real-item meaning mean (flag-only); Williams'-test claim corrected to paired t + Wilcoxon on per-source means; bootstrap-CI claim corrected to Student-t; metaphor-exclusion scoping sentence added to the chapter intro.
+- Figure placeholders that compile: F-1 architecture, F-2 monolithic vs single-call vs 3-step pipeline (the visual of the central contrast), F-3 rating distributions. Report previously had zero content figures.
+- Background reordered: 2.1 figurative language, 2.2 E2R/FACILE (new section, carries the FACILE positioning), 2.3 LLMs/agentic, 2.4 datasets, 2.5 evaluation methodology (SARI wording finalised: not used, reference dependence + redundancy rationale), 2.6 synthesis (replaces the bibentry list).
+
+**Open flags:** `TODO(verify)` in rq2/discussion: the automatic head-to-head on the survey pool says N=30 but the final assembly was 28 sources (runs aea60b3d/460d4b15/10366af9); confirm which pool the BLEU/BERTScore numbers were computed on. The 5.4 supervised-SOTA literature lookup is the only external dependency; start it before the Jun 17 writing start.
+
+**Writing schedule (Jun 17 -> 29, ~800 w/day, no slack day):** 7.6 + 6.3/6.4 -> Discussion 8.1 keystone (send Ch 6-8 to Mari Carmen ~Jun 20; she is at a conference the week of Jun 22) -> Intro + Conclusion -> Background -> 5.4/5.5 + figures -> abstract/resumen/acknowledgements -> read-through -> Jun 29 send. Cut order if slipping: optional figures -> 5.5 examples -> trim 2.1.
+
+## 18-06-2026
+
+### Writing start: resolved the tab:rq2-automatic TODO(verify) flag
+
+First writing-phase session. Before drafting 7.6/6.3 prose, settled the stale automatic-metric numbers they sit on.
+
+**Findings:**
+- **N is 27, not 30.** Final survey pool = 27 sources (all figurative, src_18 dropped), 3-step pipeline runs aea60b3d/460d4b15/10366af9. The `N=30` in `tab:rq2-automatic` is the pre-2026-05-05 single-call pool; confirms the old numbers predate the pipeline switch.
+- **Predictions are preserved** in `survey_items.csv`, so detection metrics were recomputed offline (no Couchbase, no cluster) via new checked-in script `e2r-adaptation/scripts/recompute_survey_pool_detection.py` (zero-dep, reuses evaluation.py IoU>=0.5 logic).
+- **Recomputed 3-step detection (survey pool):** 8b_agentic detect 21/27 (recall 0.778, sent F1 0.875, span F1 0.350); 70b_agentic detect 24/27 (recall 0.889, sent F1 0.941, span F1 0.638). Monolithic has no detect step (n/a). Same scale direction as the RQ1 200-example slice — survey pool *confirms* scale-lifts-detection.
+- Span F1 is a conservative lower bound: 8/27 (8B) and 4/27 (70B) detected strings are not verbatim substrings of the source (model returned normalised forms), counted as span FPs. Detection recall unaffected.
+- **BLEU/BERTScore: a reference exists but is thin (corrected mid-session after pushback).** I first claimed Task A has no paraphrase reference; wrong. `ingestion.build_semeval_replacement_map` matches each Task A idiom to a Task B `sim=1` pair **by MWE string** (not by ID, hence zero ID-overlap) and stores that pair's `sentence_2` as `metadata["gold_sentence_replacement"]`; candidates were preferentially chosen to have one. Reconstructible offline. BUT only **9/27** survey sources have a Task B match (src_04,05,06,13,14,16,21,26,27), and the reference is a *different sentence* sharing only the idiom (not a rewrite of the example's own sentence), which is why old survey-pool BLEU was ~0.061. So reference-based replacement metrics cover a third of the pool against cross-sentence references: weak signal, exactly the measurement gap the survey closes. Faithful 9-source recompute is feasible if wanted.
+- **Structural implication:** the agentic-vs-monolithic comparison has no strong automatic basis (detection n/a to monolithic; replacement rests on 9/27 cross-sentence refs); the verdict rests on the human survey. Recomputed detection numbers are an 8B-vs-70B (scale) axis. `tab:rq2-automatic` and its prose should be reframed accordingly when 6.x is written.
+
+Artifact: `Vault/1 - Thesis/Survey/results/RECOMPUTE_survey_pool_detection.md`. Decision (Option 1): recompute detection F1, reframe BLEU/BERTScore + fix N. Next: write 7.6 survey-results prose, then 6.3/6.4 with the reframed automatic-metric argument.
+
+### Writing-phase session 2: 7.6 + 6.3 drafted, verification harness built
+
+- **7.6 Survey Results drafted** (~1,000 w, four moves): response/QC, the "preserve meaning but do not simplify" headline, the scale cut with the 70B-simplicity hedge verbatim, and the copy-cat free-text example. Rewrote the stale rq3 scale paragraph with recomputed 3-step detection (21/27, 24/27; span F1 0.350->0.638) and dropped the reference-based metrics. Compiles 44pp.
+- **Verification harness built and dogfooded.** New `verify-mode.md` + SKILL.md pointer in the thesis skill: "verify section X" dispatches two read-only subagents (reference claim-support tiered against the bibkey-named PDFs; coherence against WRITING_PLAN hedges + neighbours), aggregates to a report with inline `% VERIFY` markers, human-gated. Spec + plan under `thesis-report/docs/superpowers/` (commits 5c95cc2, 04b5a41). First run on 7.6 caught a **real misattribution**: "matching the 20% QC ratio of Graham2013" was false (Graham2013 used ~30%); fixed by recasting the clause to cite Graham2013 for the techniques only. Also softened a 70B header. All four 7.6 citations PDF-verified.
+- **Paper PDFs filed.** All 19 mendeley argument papers renamed to `<bibkey>.pdf` in `1 - Thesis/Literature Review/Paper PDFS/`; Scialom duplicate removed; Dmitrijev2024 title-vs-bib mismatch confirmed fine by user.
+- **6.3 Human-Evaluation Results drafted** (~600 w): the H2 verdict. Meaning +0.31z hedge verbatim; composite tied (z 0.123 vs 0.125), no superiority claim; monolithic's marginal simplicity edge tied to its free whole-sentence rewriting vs the agentic span-anchoring; the meaning-vs-simplicity trade framed as favouring decomposition for E2R (meaning errors catastrophic, under-simplification merely unhelpful). Compiles 45pp.
+- **OPEN (coupled, next):** 6.2 automatic-metric table `tab:rq2-automatic` still stale (N=30; agentic detection 0.609/0.282 single-call; BLEU/BERTScore rest on the 9/27 cross-sentence Task B reference). Needs the same reframe as rq3: no valid automatic basis to compare agentic vs monolithic (detection undefined for monolithic, replacement has no adequate reference). `tab:rq2-automatic` is not referenced outside rq2_decomposition.tex, so the reframe is contained. The Ch8 discussion scale paragraph (0.609->0.767) also still needs the recomputed numbers when Ch8 is written.
+
+### Session 2 continued: 6.2 reframed, 8.1 keystone drafted + verified
+
+- **6.2 reframed** (correctness): removed `tab:rq2-automatic` (stale N=30, 0.609/0.282 single-call detection, BLEU/BERTScore on the invalid 9/27 cross-sentence Task B reference) and both resolved TODO(verify) blocks. Replaced "metrics disagree" with the honest "no valid automatic basis to compare agentic vs monolithic" argument (detection undefined for monolithic; replacement has no adequate reference). Kept the Letsfit qualitative example and hypothesis-status. `tab:rq2-automatic` was not referenced elsewhere, so contained.
+- **6.3 verified clean** by the harness (hedge verbatim, composite tied, numbers match); applied 2 nice-to-haves (survives->remains; redundancy trimmed to a back-reference to the Letsfit example).
+- **8.1 keystone drafted** (~700 w) around `tab:model-dependence`: the four model-dependence findings, the explicit "scale and prompts are unreliable (gains invert, metrics can't see what matters); structure is the inspectable/attributable lever; the inversions were only discoverable because decomposition isolated conditions" argument, honest scoping (decomposition helps generative/underdetermined replacement, not discriminative detection; composite tied conceded).
+- **8.1 verified by the harness, caught a real keystone must-fix**: the H2 meaning summary had dropped the mandated non-significance qualifier ("approaches but does not reach conventional significance"). Restored verbatim. Also folded the mandated 70B-simplicity wording into finding (iv) and disambiguated which composite is "tied" (agentic-vs-monolithic z 0.123 vs 0.125, not the scale row).
+- **Discussion scale paragraph (8.4 Limitations) fixed**: replaced the stale 0.609->0.767 / 0.282->0.578 + "BLEU/BERTScore flat" with recomputed survey-pool detection (24/27 vs 21/27; span F1 0.350->0.638) and the 200-slice pointer; dropped the invalid replacement-metric claim. Its TODO(verify) removed.
+- State: report compiles at 45pp. Drafted this session: 7.6, 6.3, 8.1; reframed 6.2; fixed two stale scale paragraphs. Verification harness built and used 3x (caught the Graham2013 QC-ratio misattribution and the 8.1 hedge gap). Remaining per schedule: 8.2/8.3/8.5, intro+conclusion, background (2.x; 2.2 EXPAND), 5.4 (EXPAND), front/back matter. All drafted sections still want a human read-through.
+
+### Session 2 continued: review fixes + 8.3 drafted
+
+- **Review fixes** on the spine sections (from Jelle's read): removed "The reading is direct" (7.6); replaced "rubric-triad ratings" jargon with "ratings across the three rubric dimensions" (6.2, 8.4); replaced the cryptic "Letsfit rewrite"/"Letsfit sentence" back-references with "the 'Long story short' example" (idiom-named, the meaningful handle); narrowed tab:rq2-human-eval with \small + short headers (was over the margin); fixed tab:model-dependence (was 251pt over) with \small + fixed-width p-columns. Confirmed the 6.4 identical-detection scores are correct by construction (pipeline detect = standalone detection prompt at T=0, deterministic; verified run-by-run in the experiment log) and added that mechanism to the 6.4 prose so it no longer reads as a coincidence.
+- **8.3 Observability drafted** (~500 w): framed qualitative (observability dropped as a top-level RQ); failure-traceability (structured output localises errors to a step vs monolithic "the rewrite is wrong"); src_05 "poison pill" case study, verified from survey_items.csv (8B pipeline detection miss -> input returned unchanged; 8B monolithic rewrote it to "defensive measure"; 70B detected+rewrote). Honest framing: decomposition produced a WORSE output on this item, its value here is diagnosability not result. Payoff tied to 8.1 (findings ii, iii pinned to the detection step).
+- **8.3 verified by harness**, 3 must-fixes raised; applied 2 (overclaim "i-iii" -> "ii, iii"; measurement-trap reframed as by-construction), REJECTED 1 (the 70B detect+rewrite claim was flagged unverified but is confirmed in survey_items.csv). Nice-to-haves folded in (iii framed as separately-addressable component; varied the closing to not echo 8.1).
+- Report compiles at 46pp. Remaining overfull tables (pre-existing, not-yet-drafted chapters): rq1 (x2), system_design, tab:rq3-semeval. Deferred to read-through.
+- Drafted so far: 7.6, 6.2 (reframe), 6.3, 6.4 (clarify), 8.1, 8.3. Remaining: 8.2 (needs Neidlein2020 cite), 8.5 (H4), intro, conclusion, background 2.x (2.2 EXPAND), 5.4 (EXPAND)/5.5, front/back.
+
+### Session 2 continued: schedule made weekend-aware + 8.2 drafted
+
+- **WRITING_PLAN.md schedule rewritten** weekend-aware: the Jun 10 plan had silently treated Jun 20-21 and 27-28 as working days. Revised to ~6.5 working days + Mon Jun 29 send; today's overproduction absorbs the lost weekends. Both weekends marked off (Jun 27-28 as buffer). Added "only-you tasks" (voice read; verifying 2.2/5.4 relayed claims).
+- **8.2 Where Metaphors Resist drafted** (~480 w): H3 conceptual argument (idioms have fixed conventionalised meanings -> literal paraphrase exists; metaphors, esp. novel, underdetermined -> VUAMC has no gold paraphrase by symptom not oversight). Cites Neidlein2020 (conventionality stratification: much of metaphor-recognition F1 is conventionalised WSD) and vuamsterdammetaphorcorpus + mipvu. Grounded via the wiki Neidlein summary.
+- **8.2 verified by harness (both verifiers, first real reference check).** Reference-verifier: Neidlein2020 deep-verified tier-2 against the PDF, near-verbatim; VUAMC tier-1, accurate; 0 flagged. Coherence: 2 must-fixes applied: (1) opening claimed "detection-side results bear this out" but rq3 disclaims that comparison; rerouted H3 support through the no-metaphor-replacement-metric absence; (2) added a transition bridge from the 8.1 keystone into 8.2. Nice-to-haves applied: VUAMC acronym + MIPVU cite, "subset of items" hedge, "principled choice" wording.
+- Report compiles at 47pp, all citations resolved. Discussion now has 8.1/8.2/8.3 drafted; remaining in Ch8: 8.5 (H4, ~250 w; 8.4 Limitations + Future Work already scaffolded).
+
+### 8.5 drafted: Discussion chapter complete
+
+- **8.5 Hypothesis H4: Untested drafted** (~250 w): states H4 verbatim (explicit intermediate explanations correlate with replacement correctness), then plainly why it was not tested (no explanation-quality instrument; survey rates only the final replacement). Raw material exists (persisted explanations + meaning ratings); proposed correlation design as future work (DA second pass or LLM-as-judge + human spot-validation), power analysis at n=27.
+- **8.5 harness-verified** (coherence; no cites in section so reference-verifier a no-op). Applied: stated H4 verbatim then glossed the quality operationalisation (was silently paraphrasing "explicit explanations" -> "explanation quality"); clarified the correlation unit is the source within an agentic condition (8B deliverable = 27), dissolving an n=27-vs-81 conflation; added a transition bridge from 8.4 Limitations.
+- **DEPENDENCY for the Introduction (next): the intro must state H4 verbatim, flag it untested up front, and forward-ref \ref{sec:discussion-h4}.** The intro is still all stubs; 8.5's "stated plainly rather than left implicit" presumes that intro flag exists.
+- **Chapter 8 (Discussion) is now fully drafted**: 8.1 synthesis, 8.2 metaphor resistance, 8.3 observability, 8.4 limitations (pre-existing), 8.5 H4, future work (pre-existing). Compiles 47pp.
+- Remaining prose stubs (TODO(jelle): prose): introduction, conclusion, background (2.x), rq1_detection (5.4/5.5). Per revised weekend-aware schedule: intro next, then conclusion + background 2.1/2.6, then 2.2/2.3 (EXPAND, draft-from-PDF), then 5.4 (EXPAND)/5.5, then figures + front/back, then read-through Fri Jun 26.
+
+### Review-response session (2026-06-22): tone rule, 8.1/8.2 rewrites, Gemini removal, F-3, 7.7
+
+- **Plain-English rule** saved to memory ([[thesis-plain-english]]) and added to writing-mode.md style spec. Author + UPM readers are non-native; short sentences, common words, define terms. Applied to all edits below; broader simplification sweep of earlier drafts (7.6, 6.3, 8.3, 8.5) deferred to the read-through.
+- **8.1 reworked**: dropped the Gemini/hosted finding -> **three open-weights findings** (table columns "At 8B / At 70B"); removed "no-op", "schema-commitment inversion", "architecture-invariance"; fixed the "how is human evaluation a lever" problem ("Human evaluation is not itself a lever on quality; it is how that quality is made visible"); plainer throughout. Both mandated hedges intact. 8.3 finding-number refs realigned.
+- **8.2 fixed**: header -> "Why Metaphors Resist Literal Replacement"; "lexicalised" removed; idiom-scoping corrected to the honest data-driven version (followed from VUAMC having no gold paraphrases, not a principled choice).
+- **Gemini/hosted removed everywhere (option a)**: 8.4 Model-dependence limitation now two open-weights instances (was three); rq3 "CoT model-dependent" paragraph reframed to a plain "no measurable benefit on 8B" note; rq3 hosted-contrast clause dropped. Only remaining "hosted" in prose is the sentence declaring no hosted model is used (supports the scoping). Theme survives intact on the open-weights schema inversion.
+- **Figure F-3 generated and inserted**: committed `scripts/make_fig_rating_distributions.py` (stdlib csv + matplotlib via a throwaway venv), output `images/fig_rating_distributions.pdf` (grouped box plot, raw 0-100, 20 retained respondents, bad-ref/repeat excluded). Replaced the placeholder; caption corrected (was wrongly "standardised", figure is raw). F-1 (architecture) and F-2 (monolithic vs single-call vs pipeline) still placeholders, to be done as TikZ.
+- **7.7 drafted as the free-text deep-dive** (label subsec:rq3-qualitative): **data correction** -- 56 of 93 free-text comments offer the respondent's own replacement (not "more often flag than rewrite", which the old 7.6 move-4 wrongly claimed). Theme: human alternatives are consistently shorter and more natural; systems expand into a gloss and sometimes break grammar. Verified contrastive examples (out of control -> "became too chaotic"; all-rounders -> "generally skilled in the business field"; be the role model -> "looked up to"; copy cat moved here). Ties to the simplicity gap.
+- **7.6 trimmed** (overlap fix): move-4 cut from two paragraphs to a one-paragraph pointer to 7.7, removing the duplicated copy-cat discussion. Report compiles at 47pp, all refs resolved.
+- Open: F-1/F-2 figures; broader plain-English sweep of earlier drafts; optional Wilcoxon-justification sentence in methodology; harness coherence pass on 7.7.
+
+## 22-06-2026 (Introduction drafted)
+
+- **§1 Introduction drafted in full** (`includes/introduction.tex`), ~1,000 words across the five scaffolded subsections, replacing all `% TODO(jelle): prose` stubs. Plain English (non-native author + UPM readers), no banned characters.
+  - **Motivation**: figurative language as an E2R accessibility barrier; guidelines say remove it but not how; positioned as the figurative-language module of the UPM per-guideline-module pattern (cites Surez-Figueroa2023 morphological, Diab2024 dialogues, Surez-Figueroa2024 FACILE). Two-literatures gap (figurative NLP detects but never adapts; E2R adapts other guidelines but not this one). Why LLMs now: replacement has no training data and no reliable automatic metric, so zero-/one-shot generation is the only viable route for the generative half.
+  - **Problem Statement**: task definition (detect + meaning-preserving easier-to-read restatement, treated as one connected job). Idioms/metaphors handled in **parallel** (shared architecture, never a shared prompt), per Mari Carmen's resolved item. Central thesis statement paragraph echoes the locked 8.1 keystone wording verbatim ("Human evaluation is not itself a lever on quality; it is how that quality is made visible"; "structure over scale ... not that structure always wins, but that it is the lever that can be relied on to mean what it says"), anchored to \ref{sec:discussion-synthesis}.
+  - **RQs + Hypotheses**: RQ1-RQ3 verbatim from wiki/research-questions.md; H1-H4 verbatim. **H4 stated verbatim and flagged untested up front** with forward-ref \ref{sec:discussion-h4}. Observability framed as a design property examined qualitatively (\ref{sec:discussion-observability}), explicitly NOT a fourth RQ.
+  - **Contributions**: four (agentic open-weights pipeline + monolithic control; adapted Direct Assessment method citing Graham2013/2017; empirical what-transfers findings; 108-alternative by-product dataset). Open-weights only, no hosted/Gemini mention.
+  - **Document Structure**: one sentence per chapter (refs ch:background/system-design/methodology/discussion/conclusion, sec:rq1/rq2/rq3); closes by framing the three empirical chapters as testing three levers (scale/structure/task).
+- Compiles clean at **49 pp**, no undefined citations or references.
+- Open: F-1/F-2 figures; Conclusion; Background 2.x (2.2 EXPAND); RQ1 5.4 (EXPAND)/5.5; front/back matter + appendices + AI-use disclaimer; broader plain-English sweep; harness pass on the Introduction once Jelle has read it.
+
+### 22-06-2026 (Introduction: review comments + harness)
+- Integrated Jelle's two review comments: (1) Motivation prose smoothed (combined over-short sentences, kept plain words; complaint was choppiness, not vocabulary; Problem Statement left as-is per his praise); (2) fixed the broken `\citet` reference (root cause: `\citet`/`\citeauthor` cannot print author names under `\bibliographystyle{plain}`, which produced the "(author?)" render) by switching to bare `\cite{}` matching house style throughout, and normalised the Motivation `\citep` to `\cite`.
+- Ran the two-verifier harness on §1. Coherence: zero must-fix (theme thread, hedges, open-weights-only, H4 verbatim+untested+forward-ref, parallel-not-unified, all 11 \ref targets resolve). Reference: no unsupported/unresolvable cites; two tier-2 precision caveats, both actioned:
+  - FACILE (Surez-Figueroa2024): softened "gathered under the FACILE method" -> "part of a research line ... whose support application, FACILE, is described in" (the 2024 paper designs an application, doesn't aggregate the sibling module papers).
+  - Direct Assessment (Graham2013/2017): added **Graham et al. 2015** (`graham-2015-improving`, the DA-origin paper that Graham2017 itself cites) to `bibliography.bib`; cite is now `\cite{Graham2013, graham-2015-improving, Graham2017}`. PDF renamed Graham2015.pdf -> graham-2015-improving.pdf (bibkey convention).
+- Out-of-scope flag from coherence verifier: `abstract.tex` is stale (four-step "self-verification" workflow, "significantly improves", "enables reliable" overclaim). Already on the Jun 25 abstract-refresh line; the Introduction does not inherit it.
+- Compiles clean at 49pp, no undefined cites/refs. §1 done.
+
+### 22-06-2026 (Conclusion drafted + review + harness)
+- Drafted §9 Conclusion (`conclusion.tex`), both subsections, bookending §1. 9.1 = one calibrated verdict paragraph per RQ (RQ1 partial / scale lifts detection only; RQ2 suggestive support, mandated meaning hedge verbatim + composite tied; RQ3 preserve-meaning-not-simplify + 70B simplicity hedge verbatim; H4 stated-untested -> sec:discussion-h4). 9.2 = four-contribution recap, FACILE per-guideline-module framing, expanded outlook, thesis closing sentence.
+- Integrated Jelle's two review comments: (1) removed inline bold `\textbf{RQ1 (...)}` headers, verdict paragraphs now open in prose ("The first question asked..."); (2) expanded the forward-looking detail, added a practical-lesson paragraph (unreliable levers: prompt tuned on small dev model misleads at scale; inspectability worth as much as a metric gain) and a richer future-work paragraph (simplicity gap -> plainness-tuned rewriting + simplicity-weighted eval; metaphor -> build a reference set/rubric since no gold paraphrases; Spanish/FACILE port; H4 study).
+- Closing-sentence scope: deliberately dropped the guide-draft's contestable "four prompt designs" for "two phenomena, two model scales, agentic-vs-monolithic, twenty-rater eval" (each individually accurate).
+- Harness: both verifiers clean, zero must-fix. Reference verifier cross-checked all verdict numbers against research-questions.md (all match) and confirmed Jia2024 usage. Coherence verifier confirmed all three mandated hedges verbatim, open-weights only, intro/conclusion bookend consistency, no bold headers, all 5 \ref targets resolve. Two nice-to-haves both deliberate (scope counts; theme-phrase placement), left as-is.
+- Compiles clean at 50pp, no undefined cites/refs. §9 done.
+- Schedule: Jun 22 Conclusion done. Remaining today (optional): Background 2.1 + 2.6 (Research Gap). 2.1 mostly self-served from wiki summaries (confirm 1-2 anchor cites); 2.6 short. The two EXPAND sections (2.2, 5.4) are Jun 23/26 and need relayed literature.
+
+### 22-06-2026 (Background 2.1 + 2.6 drafted + harness)
+- Drafted §2.1 Figurative Language (~700w): idiom vs metaphor definitions + conventionality spectrum; MIP/MIPVU token-level annotation (mipvu) + VUAMC; detection-scores-mislead critique (Neidlein2020: apparent success is conventionalised WSD); contested LLM competence (Ichien2024 optimistic GPT-4 novel-metaphor / Dmitrijev2024 pessimistic 6-of-20 detection / Liu2022 Fig-QA above-chance-below-human), reconciled as interpretation easier than detection + scale/framing; generative side thin because evaluation is the bottleneck (Lai2024) -> motivates human eval (Ch 4).
+- Drafted §2.6, renamed "Synthesis and Research Gap" (\label{sec:research-gap}; TFM named-gap norm): three paragraphs (coverage gap = the two literatures don't intersect, that intersection is the contribution; method bet = decomposition precedents, RQ2 tests open-weights transfer; measurement gap = no trusted auto metric, Ch 4 builds the instrument), closing on the structure-lever-but-no-metric hook.
+- Confirmed all 10 cite claims against wiki summaries via a read-only agent BEFORE drafting (no misattribution from titles).
+- Harness caught a REAL overclaim: Badran2025 cited as "three-stage pipeline outperforms a monolithic system" is NOT supported (verifier read the PDF: paper runs no pipeline-vs-monolithic ablation; reports competitive 3rd/6th SemEval-2025 Task 1A results + ensembling gains). Root cause = the wiki summary itself overstated it. Fixes applied: (1) 2.6 prose recharacterised Badran2025 as "multi-stage pipelines applied to idiom tasks with competitive results", shifted the decomposition-helps weight to Tian2024/Gao2025; (2) softened Gao2025 "especially for the hardest cases" (true for ChID only) to "without extra training"; (3) corrected the stale guide comments in 2.3 and 2.6 that encoded the false "pipeline > monolithic" / "hosted closed-source backbones" claims (trap for the Jun 23 2.3 draft); (4) corrected the Badran2025 wiki summary at source (AlexUNLP-NB...md) so future queries don't repeat the error.
+- Coherence verifier otherwise clean: theme, named-gap framing, decomposition-as-bet hedge, open-weights framing, terminology, all \ref targets resolve, no contradiction with intro/conclusion. One nice-to-have: 2.6 measurement-gap paragraph overlaps 2.5 (acceptable synthesis; safe to compress on the Jun 26 page-trim pass if Ch 2 runs long).
+- Compiles clean at 52pp, no undefined cites/refs. 2.1 + 2.6 done. Jun 22 plan fully cleared (Conclusion + 2.1 + 2.6).
+- Remaining undrafted: 2.2 (E2R/FACILE, EXPAND, Jun 23), 2.3 (LLMs/agentic, Jun 23), 5.4 (supervised, EXPAND, Jun 26), 5.5, 3.2/3.3, figures, front/back matter, appendices.
+
+### 23-06-2026 (Background 2.3 drafted + harness) [done early, Jun 22 session]
+- Drafted §2.3 LLMs & Agentic Systems (~500w, 4 paragraphs): prompting foundations (zero/one/few-shot, structured output, chain-of-thought); decomposition precedents motivating H2 (Tian2024 scaffolding beats plain prompting; Gao2025 paraphrase+self-check; Badran2025 multi-stage idiom pipeline, COMPETITIVE results only; Hayashi2025 context-augmentation set apart as a related pattern); Jia2024 supervised counterpoint (H1 not assumable); observability as a design property -> sec:discussion-observability.
+- CITATION GAP handled honestly: foundational few-shot (Brown 2020) + chain-of-thought (Wei 2022) are NOT in the bib and the Mendeley catalog did not return clean metadata, so I did NOT fabricate them. Two `% NEEDS SOURCE` markers left inline (placed so they don't inject a pre-period space). ACTION FOR JELLE: add Brown 2020 + Wei 2022 to Mendeley (then I wire the cites), or decide to drop the two anchors.
+- Harness: reference verifier CLEAN (all 5 cites supported at asserted strength; Badran "competitive" constraint respected; NEEDS SOURCE gaps acknowledged). Coherence verifier good; applied 2 nice-to-have fixes: (1) "zero-shot pipeline" -> "zero-/one-shot pipeline" (H1 consistency w/ intro + line 143); (2) reframed Hayashi2025 as "a related pattern" rather than folding context-augmentation into the decomposition-evidence set. Deferred to Jun 26 audit: minor Badran-clause echo between 2.3 and 2.6; optional hedge/corroborant for Jia2024 (it is an @unpublished arXiv working paper, SOTA claim is the authors' own).
+- Compiles clean at 53pp, no undefined cites/refs. 2.3 done.
+- Remaining undrafted: 2.2 (E2R/FACILE, EXPAND - needs literature relayed), 5.4 (supervised, EXPAND), 5.5, 3.2/3.3 baselines+pipeline-explicit, figures F-1/F-2/F-3, front/back matter, appendices, AI-use disclaimer. NEXT EXPAND blocker: 2.2.
+
+### 23-06-2026 (foundational cites wired) [Jun 22 session]
+- Jelle added Brown2020 + Wei2022 to Mendeley + PDFs (Brown2020.pdf, Wei2022.pdf). Confirmed both are the right papers (Brown = "Language Models are Few-Shot Learners"/GPT-3, arXiv 2005.14165; Wei = "Chain-of-Thought Prompting Elicits Reasoning in LLMs", NeurIPS 2022, arXiv 2201.11903) and match the 2.3 prose (few-shot/in-context; chain-of-thought). Added both to bibliography.bib (hand-curated subset), wired \cite{Brown2020}/\cite{Wei2022} into 2.3, removed both NEEDS SOURCE markers. Compiles clean at 53pp, all cites resolve. §2.3 fully grounded.
+- NEXT: 2.2 E2R/FACILE (EXPAND). Gap = a primary citable E2R guideline source (Inclusion Europe / IFLA) for (a) what E2R is + target populations, (b) figurative language is discouraged. FACILE trio already held. Relay requested from Jelle.
+
+### 23-06-2026 (E2R primary sources filed) [Jun 22 session]
+- Jelle supplied the two primary E2R standards for 2.2. Created + validated bibtex entries (isolated bibtex parse, clean) and added both to Mendeley:
+  - **InclusionEurope2009** ("Information for All", Inclusion Europe, 2009, ISBN 2-87460-110-1). PDF filed as InclusionEurope2009.pdf (bibkey convention). KEYSTONE QUOTE for the whole thesis motivation, p.10 rule 10: "Do not use difficult ideas such as metaphors. A metaphor is a sentence that does not actually mean what it says. An example of a metaphor is 'it is raining cats and dogs'." Target population: people with intellectual disabilities. This is the primary source that E2R guidance explicitly discourages figurative language.
+  - **UNE2018** (Spanish standard UNE 153101:2018 EX, "Lectura Fácil...", UNE, 2018). No PDF (paywalled); metadata via revista.une.org. For the Spanish-context / future-work tie.
+- 2.2 grounding now SOLID (was the last EXPAND blocker besides 5.4). §2.2 brief written into SECTION_BRIEFS.md with the keystone quote. Ready to draft.
+- Both entries added to bibliography.bib (hand-curated subset). 5.4 (supervised SOTA numbers) remains the only outstanding relay.
+
+### 23-06-2026 (Background 2.2 drafted + harness; Chapter 2 COMPLETE) [Jun 22 session]
+- Drafted §2.2 Easy-to-Read and Cognitive Accessibility (~430w, the last EXPAND blocker for Ch 2): E2R as a codified accessibility requirement (InclusionEurope2009 + UNE2018 standards, target = people with intellectual disabilities); the keystone "missing guideline" move led by the verbatim InclusionEurope2009 rule 10 ("Do not use difficult ideas such as metaphors..."); goal-vs-method gap = the thesis contribution; FACILE per-guideline-module pattern (morphological Surez-Figueroa2023 + dialogue Diab2024 modules in a research line whose support app is FACILE Surez-Figueroa2024), this thesis = the figurative-language module (English; Spanish port future work -> sec:future-work, label added to discussion.tex); E2R-vs-simplification distinction -> simplicity as its own rubric dimension (pays off in sec:rq3).
+- Harness: BOTH verifiers clean, no must-fix. Reference verifier OPENED the PDF and confirmed the keystone InclusionEurope2009 quote is VERBATIM-accurate (p.10, rule 10). All cites supported. One tier-1 note: UNE2018 "validate" unverifiable (paywalled), but the revista.une.org source describes a validation phase, defensible. Applied 1 coherence nice-to-have: reworded "drawn together by FACILE" -> "belong to a research line whose support application, FACILE,..." to match the intro's framing (avoids implying the sibling modules are internal to FACILE). Deferred to Jun 26 read-through: 2.1->2.2 and 2.2->2.3 transitions are hard cuts (2.6 does the integrative work; tolerable).
+- Compiles clean at 53pp, no undefined cites/refs. **Chapter 2 Background is now fully drafted** (2.1, 2.2, 2.3 new; 2.4 Datasets + 2.5 Eval pre-existing; 2.6 Research Gap new).
+- ONLY remaining EXPAND section in the whole thesis: 5.4 (supervised SOTA numbers for tab:rq1-supervised). Everything else writes from owned data.
+
+### 23-06-2026 (Diagram foundation + F-1, F-2 built in TikZ) [Jun 22 session]
+- DECISION (Jelle): diagrams built in TikZ (LaTeX-native, vector, version-controlled, shared style file). Foundation laid:
+  - main.tex preamble: added \usepackage{tikz} + libraries (arrows.meta, positioning, fit, backgrounds, calc, shapes.geometric) and \input{includes/figstyles}.
+  - NEW `includes/figstyles.tex`: shared palette + node/edge styles for ALL diagrams. Palette shared with the matplotlib figures (figblue/figorange/figgreen = same hues as fig_rating_distributions), so colour means the same thing report-wide. Styles: proc (blue, structured step), llm (violet, model call), mono (orange, anti-structure baseline), store (cylinder, Couchbase), io (sentence/artifact), group (dashed container), flow / trace (dashed) edges, edgelbl. Every future diagram draws only from these.
+- Built F-1 (fig:architecture): React UI <-> FastAPI runner <-> LangGraph (4 graphs) -> vLLM (8B/70B, A100); Couchbase store below (persist/read); LangSmith trace above (dashed). Replaces fbox placeholder. Rendered + visually checked: clean.
+- Built F-2 (fig:architectures-contrast): the theme-central 3-panel contrast, (a) monolithic single prompt -> free-text [orange], (b) single structured call -> spans+paraphrase [violet], (c) Detect->Explain->Transform pipeline -> literal paraphrase [blue]. Structure increases (a)->(c); caption frames it as the RQ2 designed experiment. Replaces fbox placeholder. Rendered + visually checked: clean, reads well.
+- Fixed a PRE-EXISTING latent bug surfaced while compiling: mendeley.bib Gao2025 author had CJK chars "Jing Zhang (张京)" -> Unicode LaTeX errors on every build. Removed the parenthetical locally. ACTION FOR JELLE: fix in Mendeley too (author -> "Jing Zhang") so a re-export doesn't reintroduce it.
+- Compiles clean at 54pp: no Unicode errors, no TikZ errors, no undefined cites/refs.
+- Figure status: F-1 done, F-2 done, F-3 done (matplotlib). Possible next: a detailed 3-step pipeline data-flow diagram for 3.2 (TaskOutput schema fields + the two deterministic post-processing steps: span extraction, token-label derivation) to "show how everything works".
+
+### 23-06-2026 (Pipeline worked-example diagram + 3.2 prose) [Jun 22 session]
+- Built fig:pipeline-example for §3.2: the 3-step pipeline (Detect -> Explain -> Transform) traced on a REAL example (8B agentic, SemEval src_02). Verbatim from survey_items.csv: input "...being the role model she never had." -> detected "be the role model" (idiom) -> literal meaning "someone she looks up to or aspires to be" -> output "...being someone she looks up to or aspires to be." Idiom highlighted blue in input, substituted literal phrase highlighted green in output. Honest: input/detected/output verbatim; the Explain "meaning" is the literalisation visible in the real output (nodes.py confirms the pipeline Explain node emits {expression, meaning}; meaning isn't separately exported but is reflected in the rewrite). No fabrication.
+- Added a paragraph to §3.2 making the 3-step pipeline EXPLICIT (the chapter guide had flagged it as implicit): single structured call vs the three sequential-call pipeline; intermediate state inspectable; the pipeline is the survey agentic condition and the RQ2 contrast vs monolithic.
+- Fixed 4 PRE-EXISTING em-dashes in system_design.tex (the \texttt{...graph} bullets) -> colons. Now ZERO em-dashes anywhere in includes/ (full report swept clean).
+- Compiles clean at 55pp, no errors, no undefined cites/refs. Figures now: F-1 (architecture), F-2 (3-architecture contrast), fig:pipeline-example (worked example), F-3 (rating distributions, matplotlib). All built on the shared figstyles.tex foundation.
+
+### 23-06-2026 (Observability case-study figure: poison pill) [Jun 22 session]
+- Built fig:poison-pill for §8.3 (observability): the src_05 "poison pill" case across all three systems on the SAME input, verbatim from survey_items.csv. 8B agentic pipeline: Detect = no span found (flagged orange) -> "poison pill" left unchanged (the diagnosable no-op). 8B monolithic: "no separable detection step" (dashed box = missing observability) -> rewrote to "a defensive measure". 70B agentic: Detect = "poison pill" -> rewrote to "a financial strategy to prevent a hostile takeover". Visualises the §8.3 argument: pipeline conditions expose an inspectable detection step (failure attributable); monolithic cannot tell miss from choice. Avoided ellipses (style rule) by quoting each system's replacement of the expression.
+- Added a one-line \ref to the figure in the case paragraph. Figure fits textwidth (no resizebox); the 3 overfull-hbox warnings in the build are PRE-EXISTING tables (Jun 25 task), not this figure.
+- Compiles clean at 55pp, no errors, no undefined cites/refs, zero banned chars.
+- Figure inventory now: F-1 architecture, F-2 three-architecture contrast, fig:pipeline-example (happy-path worked example, §3.2), fig:poison-pill (failure/diagnosis case, §8.3), F-3 rating distributions (matplotlib). All TikZ figures share figstyles.tex.
+
+### 23-06-2026 (RQ1 §5.5 Qualitative Examples drafted + harness) [Jun 22 session]
+- Drafted §5.5 (~280w, RQ1 detection qualitative examples) with inline span highlighting (figblue=detected, figorange=missed). Three REAL idiom examples from the survey pool, joined gold (selected_sources.csv) x predicted (survey_items.csv): (1) clean hit src_07 "the big cheese" (8B+70B exact); (2) span-F1<sentence-F1 via partial multi-idiom src_06 "fashion plate" caught / "boho chic" missed; (3) scale lifts detection src_26 "baby blues" (8B detects nothing, 70B catches). Closes the chapter with a handoff to Ch 6.
+- Avoided figure overlap: used src_07/06/26 (figures used src_02 pipeline, src_05 poison pill).
+- Harness caught a REAL issue: reference verifier flagged my gloss "baby blues means blue eyes" -- linguistically correct in context, but the systems themselves glossed it as postpartum depression in their replacements, so the gloss created a tension vs the data AND was unnecessary for a detection example. Removed the gloss + dropped "returns the sentence unchanged" (kept the no-op-output framing unique to §8.3). Coherence fixes applied: softened "a main reason"->"one reason ... alongside boundary-offset mismatches" to reconcile with the chapter's IoU-offset headline mechanism; added the Ch-6 theme handoff the chapter-close hook wanted. All example claims (sentences verbatim, 8B/70B detection behaviour) verified CONFIRMED against the CSVs.
+- Compiles clean at 55pp, zero banned chars, no undefined cites/refs. §5.5 done.
+- Remaining body prose: §5.4 supervised comparison (table BLOCKED on relayed SOTA numbers; prose can use the Neidlein/Jia qualitative fallback). Then front/back: abstract refresh (stale), resumen, acknowledgements, AI-use disclaimer, appendices.
+
+### 23-06-2026 (RQ1 §5.4 Supervised Comparison drafted + harness) [Jun 22 session]
+- Drafted §5.4 (table tab:rq1-supervised + ~360w prose). The one literature-lookup/EXPAND section; numbers extracted from filed PDFs + ACL (NOT relayed by Jelle, since the PDFs are filed): VU metaphor supervised = DM-ENS token-F1 0.766 (VUA all-POS, via Neidlein2020); SemEval idiom top zero-shot-track macro-F1 ~0.90 (tayyar-madabushi overview). Prose lands: supervised clearly ahead -> H1 partial; Jia2024 supervised-can-win counterpoint (fine-tuning+CDA, F1 0.866 MOH-X / 0.736 TroFi, NOT a VUA number); Neidlein2020 WSD caveat (gap may overstate competence on novel metaphor); mandated "indicative, not leaderboard-comparable" hedge; and the key terminology clarification that SemEval's zero-shot TRACK still uses fine-tuned supervised systems (distinct from our zero-shot LLM).
+- Harness caught 2 REAL errors (independent re-verification of the subagent-extracted numbers): (1) SemEval table cell 0.902 was false-precise/contested between two extractions (0.9016 vs 0.8959) -> changed to ~0.90 (\approx) since it is an indicative comparison and both agree on ~0.90; (2) Neidlein quote "metaphorical" -> "metaphoric" (verbatim fix). Applied 1 coherence sharpening: Jia2024 "by fine-tuning with curriculum-style data augmentation" (makes the supervised nature explicit). DM-ENS 0.766, Jia 0.866/0.736, no-VUA-attribution, and all cites CONFIRMED.
+- Compiles clean at 56pp, no undefined cites/refs. **§5.4 done -> the LAST external-dependency / EXPAND section is closed. The entire thesis body is now drafted.**
+- DISCOVERED (correcting an earlier wrong claim): my prior "zero em-dashes" check only grepped the Unicode "—"; there are ~48 RENDERED LaTeX "---" em-dashes in PROSE across the report (methodology 10, rq3 8, annex 6, rq1 6, background 1, discussion 1), all in pre-existing/earlier content (my session prose introduced none; the "---" in my files are all "% --- GUIDE" comment markers). These violate the standing no-em-dash rule and need a careful sweep (Jun 26 read-through, or sooner). Flagged to Jelle.
+
+### 23-06-2026 (Em-dash sweep + overfull tables fixed) [Jun 22 session]
+- EM-DASH SWEEP: removed all rendered LaTeX "---" em-dashes from prose (curated, context-aware, via scratchpad/sweep_emdash.py): section title -> colon; \item \textbf{X} --- def-lists -> colon; parenthetical pairs -> parens; single clause-breaks -> comma; table-cell no-value placeholders (rq1 detection-scale token cols + Delta col; rq3-semeval Prompt col) -> "n/a". Number ranges (10--20, 0.480--0.492, pages) left intact (correct en-dash usage). Files touched: methodology, rq3, rq1, background, discussion, annex. Result: ZERO rendered "---" in prose across includes/ (the only "---" left are "% --- GUIDE" comment markers).
+- OVERFULL TABLES FIXED: wrapped tab:rq1-detection-scale (8-col) and tab:rq3-semeval (7-col) in \resizebox{\textwidth}{!}{...}. Also fixed 3 long-\texttt prose-bullet overfulls (not tables, but flagged): rq1 §5.1 Models bullet (shortened HF names to Llama-3.1-8B-Instruct etc. + \allowbreak at hyphens); system_design Infrastructure Open-weights bullet + Persistence key \texttt{prediction::\{run_id\}::\{example_id\}} (\allowbreak at slash/:: separators). ALL overfull \hbox warnings now cleared.
+- Compiles clean at 56pp, no errors, no undefined cites/refs, zero overfulls, zero rendered em-dashes.
+- FLAGGED (separate, not fixed): annex.tex has STALE survey numbers ("Rated items (16)", "90-item pool (30 sources x 3)", "20% QC ratio of Graham2013") vs the as-run final (27 sources x 3 = 81 items, 20 items/respondent). Also the "20% QC ratio of \cite{Graham2013}" is the misattribution corrected elsewhere (Graham used ~30%; cite for techniques only). The annex/appendix needs reconciling to the as-run numbers before submission.
+
+### 23-06-2026 (Annex survey numbers reconciled) [Jun 22 session]
+- Fixed the two stale numbers in annex.tex (appendix:survey-design), verified against canonical methodology.tex (lines 68/75/82) which give "81-item, 22-respondent design; 16 rated + 4 QC = 20 items per respondent": (1) "90-item pool (30 sources x 3)" -> "81-item pool (27 sources x 3)"; (2) removed the "matches the 20% QC ratio of \cite{Graham2013}" misattribution (Graham did not establish a 20% ratio; we cite Graham for QC techniques + continuity only), reworded to state the factual proportion ("20 items per respondent, of which the four QC items are 20%"). The per-respondent structure (16 rated, 4 QC, 20 total) was already as-run-correct, kept.
+- Confirmed no other place states 90/30 as the FINAL pool: rq3:110 legitimately derives 50 candidates -> 30 sampled -> 3 excluded -> 27 final (81 items), which is correct.
+- Compiles clean at 56pp, no errors/undefined/overfull.
+- Note: annex is written partly in design-spec/plan tense ("the survey is deployed", "a pilot is run ... cut to 12 if median > 25 min"); the cut-to-12 contingency did not trigger (as-run kept 16 rated). Tense/plan-vs-asrun polish is optional Jun 26 read-through work, not a number error. The "on cloud nine" per-item layout example is illustrative, not necessarily one of the 27 sources (fine for an instrument layout).
+
+### 22-06-2026 (Larger-N detection experiments: infra validated, runs started)
+- Decision (Jelle): run larger detection experiments for tighter CIs + better §5.4 comparability, server is paid-for. Stack brought up: backend localhost:3030, vLLM serving meta-llama/Llama-3.1-8B-Instruct (FP16, max_len 4096) via static ngrok (kristin-caissoned-nonfervently.ngrok-free.dev, auth jelle:vanlieshout) — matches set-values-and-secrets, reachable.
+- Couchbase empty after restart (volume not mounted, expected) -> re-ingested. SemEval EN ingest = 3,487 examples, all LABELED train splits (train_one_shot + train_zero_shot; dev.csv/test.csv NOT ingested because they lack the DataID field the client keys on, and SemEval test gold is absent from the repo anyway). So the SemEval eval set is clean labeled data, 17x the old 200-slice. For a zero-shot model this is a legit held-out-from-us eval; for §5.4 it is the TRAIN split (not official test), so §5.4 stays "indicative" but with large N + tight CIs.
+- Run API (services/api/.../runs.py): POST /runs {dataset, phenomenon, task_type, model_name="vllm:<hf-id>", temperature, prompt_version, limit?}. Selects examples ORDER BY example_id [LIMIT n] over ALL ingested (no split filter) -> the old "200-slice" was just LIMIT 200. New runs are non-destructive (keyed by run_id); the old thesis run-ids are gone with the volume, so we generate fresh numbers + new run-ids.
+- VALIDATED end-to-end: 10-example 8B idiom-detection run completed 10/10, eval computed (f1_sentence 0.5, f1_span 0.267); sample prediction correct (spans + token_labels derived). 
+- LAUNCHED: 8B SemEval idiom detection on full 3,487 (run_id 8141d880). VUAMC full-corpus ingest running (background).
+- PLAN (run matrix, each feeds specific tables): detection-only v1 -> tab:rq1-detection-scale + §5.4; detect_then_replace v2 vs detection -> the +12/+22 vs -28/-5 schema-inversion (rq1/discussion/rq3); pipeline_replace detection -> the "pipeline ≡ detection-only" identity. Need 2 models (8B now, 70B-AWQ after VM model swap) x 2 datasets (SemEval 3487, VUAMC). Propagation map (5 files) already in notes for the post-run number update.
+- OPEN DECISIONS for Jelle: (1) VUAMC scope — full 16,202 (unbiased, slow on 70B) vs a prefix (LIMIT is a prefix, genre-biased) vs keep metaphor numbers as-is (they stay indicative regardless, token-vs-sentence); (2) confirm the 70B-AWQ fits the chosen GPU before the swap; (3) run all 3 task types or detection-only first.
+
+### 22-06-2026 (Abstract refreshed) [while detection reruns in flight]
+- Replaced the stale proposal-era abstract (four-step incl. "self-verification", "significantly improves", "enables reliable", prospective "we hypothesize" framing) with a final results abstract: E2R missing-guideline motivation; 3-step pipeline (detect/explain/transform) vs monolithic; open-weights 8B+70B; SemEval idioms + VUAMC metaphors; automatic detection metrics + Direct Assessment survey. Findings stated with mandated hedges verbatim (RQ2 directional-not-significant + tied composite; 70B "scale did not buy, and on simplicity may have cost, human-perceived quality"; prompt gains reverse across scale; preserve-meaning-not-simplify). Theme close = structure + human-grounded eval is the reliable lever.
+- DELIBERATELY number-safe: no detection F1s (qualitative detection claims only), so the pending detection reruns won't invalidate it. ~270 words.
+- Coherence verifier: clean, zero must-fix (theme, 3-step, both hedges verbatim, no overclaim, open-weights, number-safety, tense all pass). Restored "human-perceived" in the scale hedge for verbatim uniformity. Compiles clean at 56pp.
+
+### 22-06-2026 (Resumen drafted) [front matter]
+- Drafted resumen.tex as a faithful Spanish translation of the refreshed abstract: same 3-paragraph structure, term "Lectura Fácil" (matches UNE 153101), method names kept (Direct Assessment, prompt, SemEval, VUAMC). Hedges carried over (ventaja direccional ... sin alcanzar significación; escala no aportó / pudo restar; preservan el significado pero no simplifican). Number-safe (no detection F1s).
+- Compiles clean at 56pp (UTF-8 accents fine). FLAG: needs a native-speaker / Mari Carmen review of the Spanish before submission (prudent for a Spanish-university resumen).
+- Remaining front/back matter: acknowledgements (needs Jelle's personal input - who to thank), AI-use disclaimer page (I can draft, factual), cover date -> July 2026.
+
+### 22-06-2026 (Cover date + AI-use disclaimer)
+- Cover date: "Madrid, MM YYYY" -> "Madrid, July 2026".
+- Created includes/ai-disclaimer.tex (UPM 2025 norm), wired into main.tex after acknowledgement / before TOC. DRAFT for Jelle to finalize (signed integrity statement): declares Claude/Claude Code as writing+engineering aid (drafting/editing under direction, figures, citation/consistency checks, experiment orchestration); asserts the research, analysis, claims are the author's with full responsibility; distinguishes AI-as-writing-tool from AI-as-research-subject (the LLMs studied). Jelle must confirm scope of disclosure + institutional fit. Compiles at 57pp.
+- Detection-rerun recovery: the dtr+pipeline auto-eval job failed at the BERTScore eval step (180s curl timeout too short; set -e aborted before pipeline launched). dtr run itself COMPLETED (d3a7a15c, 3463/3487). Recovery job b2fmtjec4 running: re-evaluates dtr (1200s timeout) + launches/evals the pipeline_replace run.
+
+### 22-06-2026 (8B SemEval full-N detection results IN)
+8B SemEval idiom, full 3,487 (vs old 200-slice). Run-ids: detection=8141d880, dtr=d3a7a15c, pipeline=b9f31108.
+| condition | f1_sent new | f1_sent old(200) | f1_span new | BLEU new | BERTScore new |
+|---|---|---|---|---|---|
+| detection-only v1 | 0.333 | 0.255 | 0.204 | -- | -- |
+| dtr (current "v2") | 0.584 | 0.492 | 0.259 | 0.061 | 0.850 |
+| pipeline_replace | 0.332 | 0.255 | 0.204 | 0.066 | 0.849 |
+FINDINGS:
+- Detection numbers UP ~6-8pp: the old 200-slice (ORDER BY example_id LIMIT 200) was dominated by the tiny train_one_shot head -> non-representative. Full set is representative. The thesis under-reported 8B idiom detection.
+- Schema-commitment lift CONFIRMED + slightly bigger: detection 0.333 -> dtr 0.584 = +25pp (vs thesis +24pp on slice). Robust.
+- "Pipeline detection == detection-only to 3 decimals" -> at full N it's 0.332 vs 0.333 (span 0.2037 vs 0.2042), NEAR-identical not byte-identical; cause = different structured-output failure sets (pipeline 20 failed, detection 24 failed -> different denominators). Restate as "near-identical" or compute on shared successful examples. Per-example detection step still same prompt.
+- BLEU/BERTScore CANNOT refresh from full set: dtr BLEU 0.061 (full) vs thesis 0.40 (gold subset) because BLEU/BERTScore need Task B gold paraphrases, only a subset of 3,487 has them -> collapse over full set. REPLACEMENT-metric columns (tab:rq3-semeval BLEU/BERTScore) must stay on the gold-paraphrase subset; only DETECTION metrics refresh at full N.
+- 0.6-0.7% structured-output failures at scale (20-24/3487); eval over examples_evaluated=3487.
+NEXT: 8B VUAMC (per-token gold, clean, detection side) -> then swap VM to 70B-AWQ -> repeat. Then propagate detection numbers (rq1 tab + analysis, schema-inversion, §5.4 idiom row, conclusion) + soften pipeline-identity wording. Keep replacement metrics as-is.
+
+### 22-06-2026 (8B VUAMC full-N detection IN — a finding flips)
+8B VUAMC metaphor detection, full 16,202 (run 2d322ad0, ~73 min, 16199/16202). vs old 200-slice:
+| metric | new(full) | old(200) | delta |
+|---|---|---|---|
+| f1_sentence | 0.254 | 0.430 | -17.6pp |
+| f1_token | 0.206 | 0.176 | +3.0pp |
+| f1_span | 0.033 | 0.049 | -1.6pp |
+| P-tok / R-tok | 0.238 / 0.183 | 0.252 / 0.135 | -- |
+KEY:
+- VUAMC slice was non-representative in the OPPOSITE direction from SemEval (SemEval f1_sent up +8pp, VUAMC f1_sent DOWN -18pp). example_id sorts by document -> genre-clustered -> first-200 was one genre. Confirms prefix bias is real + direction-unpredictable.
+- ANALYSIS CLAIM FLIPS: §5.3 "Sentence-level F1 is higher on metaphors than on idioms" (0.430 vs 0.255) REVERSES at full N: metaphor 0.254 < idiom 0.333. That paragraph's CONCLUSION changes, not just its numbers.
+- Scale-lift headline (+18-20pp = VU 0.430->0.635) must be RECOMPUTED once 70B full-corpus is in; magnitude unknown until then.
+- Propagation will touch ANALYSIS PROSE (rq1 §5.3), not just table cells. Cannot finalize RQ1 until 70B full-corpus numbers exist.
+NEXT: 70B runs (needs VM model swap to Llama-3.3-70B-Instruct-AWQ) + 8B VUAMC dtr+pipeline. Concurrency bump to 16 strongly advised (VUAMC det = 73 min at conc 4; dtr/pipeline 2-3x).
+
+### 22-06-2026 (8B matrix COMPLETE)
+8B VUAMC dtr+pipeline done at conc 16 (run dtr=491d332c, pipeline=66726606). Conc bump 4->16 gave ~4.5x speedup (VUAMC dtr 23.5min, pipeline 25.5min vs ~107/119 projected at conc4).
+FULL 8B MATRIX (full N) f1_sentence / f1_span [VUAMC also f1_tok]:
+- SemEval idiom (3487): det 0.333/0.204 | dtr 0.584/0.259 | pipeline 0.332/0.204
+- VUAMC metaphor (16202): det 0.254/0.033 (tok 0.206) | dtr 0.352/0.050 (tok 0.253) | pipeline 0.254/0.033 (tok 0.207)
+- VUAMC det P-tok/R-tok = 0.238/0.183.
+CONFIRMED at full N:
+- Schema-commitment lift (dtr vs det) BOTH phenomena: SemEval +25pp, VUAMC +10pp (thesis slices +22/+12). Robust, same direction.
+- Pipeline == detection-only: VUAMC 0.254/0.254 (identical to 3dp), SemEval 0.332/0.333 (near-identical). Holds.
+- Metaphor-vs-idiom sentence-F1 ORDERING FLIPPED: idiom 0.333 > metaphor 0.254 (was metaphor 0.430 > idiom 0.255). §5.3 prose rewrite needed.
+- dtr VUAMC had 198 failures (1.2%) vs det 3 / pipeline 5; schema-lift on slightly different denominators (minor).
+Run-ids (8B, full N): SemEval det=8141d880 dtr=d3a7a15c pipeline=b9f31108; VUAMC det=2d322ad0 dtr=491d332c pipeline=66726606.
+NEXT: swap VM to Llama-3.3-70B-Instruct-AWQ -> 200-ex calibration -> full 70B matrix (~4.5-7.5h if conc16 sustained). THEN propagate all detection numbers + rewrite §5.3 + recompute scale-lift. Replacement metrics (BLEU/BERTScore) stay on gold subset (not refreshed).
+
+### 22-06-2026 (70B up + calibrated; detection launched)
+- 70B = casperhansen/llama-3.3-70b-instruct-awq (Jelle kept 3.3 over a clean-scale 3.1-70B; ACTION when propagating: add a one-line caveat that the comparator is a later version, so the gap reflects scale + a generation improvement, not scale alone). max_len 4096, gpu_util 0.90, backend VLLM_CONCURRENCY=6.
+- Calibration (200-ex SemEval det): 1.48 ex/s, 0 failures, stable. Reproduced the OLD 70B SemEval slice number exactly (f1_sent 0.435) -> pipeline consistency confirmed; full 3,487 will move like the 8B did.
+- Full 70B matrix projection @1.48/s: SemEval det/dtr/pipeline 39/57/63 min; VUAMC det ~3.0h, dtr ~4.4h, pipeline ~4.9h. FULL ~15h (VUAMC ~12h).
+- DECISION (recommended): det (both) + dtr (both) at full N ~9h = the two HIGH-VALUE 70B findings (scale lift + schema-inversion -28pp). DROP 70B pipeline (~6h saved): pipeline-identity already confirmed at 8B full-N both datasets + true by construction + 70B slice. VUAMC sampling for 70B is OUT (must match 8B full-16k for the scale comparison; LIMIT is a biased prefix).
+- LAUNCHED: 70B detection both datasets (job bxt43qd06, ~3.7h). dtr to follow pending Jelle's scope confirm.
+
+### 22-06-2026 (number-independent polish, while 70B matrix runs)
+- Acknowledgement: scaffolded includes/acknowledgement.tex (was stub) with factually-safe thanks (supervisor Mari Carmen, survey volunteers, KTH+UPM joint programme) as real sentences + TODO(jelle) comments for KTH supervisor / funding / personal thanks. Renders as a valid page; Jelle personalizes.
+- Terminology audit: normalized "easy-to-read adaptation" (task/methodology proper noun) -> "Easy-to-Read adaptation" across discussion/rq2/rq3 (4 spots). Convention now consistent: Easy-to-Read = methodology (caps); easy-to-read English / easy to read = plain adjective (lowercase). Audit non-issues confirmed: all " -- " matches are TikZ path syntax or the verbatim survey-form display (not prose en-dashes); "Direct Assessment"/DA casing consistent.
+- Assessed §8.2 (metaphors) + §8.4 limitations + §8.5 (H4): already in the approved plain register (drafted/revised post-feedback). NOT churned. Voice pass yields little on post-feedback prose; the only outstanding voice items would be the Jun 26 read-through.
+- Compiles clean at 57pp. Front matter now: abstract (refreshed), resumen (ES), cover date (July 2026), AI-disclaimer (draft), acknowledgement (scaffold). All number-safe.
+- Number-independent polish essentially complete. Remaining real work = the detection-number propagation (waiting on 70B matrix).
+- EXPERIMENT: 70B full matrix running autonomously. detection job bxt43qd06 in flight (SemEval det run 7cbef03f). When detection completes -> launch robust 4-cell job (SemEval dtr+pipeline, VUAMC dtr+pipeline) to finish the matrix overnight.
+
+### 22-06-2026 (70B detection IN — scale-lift headline changes; dtr+pipeline launched)
+70B detection full N, 0 failures. Runs: SemEval det=7cbef03f (36min), VUAMC det=d47a01fb (170min).
+SCALE LIFT (8B->70B detection, full N) vs old slice:
+| metric | 8B | 70B | dΔ full | (slice Δ) |
+| SemEval f1_sent | 0.333 | 0.529 | +19.6pp | (+18) |
+| SemEval f1_span | 0.204 | 0.337 | +13.3pp | |
+| VUAMC f1_sent | 0.254 | 0.302 | +4.8pp | (+20.5!) |
+| VUAMC f1_tok | 0.206 | 0.265 | +5.9pp | |
+| VUAMC f1_span | 0.033 | 0.064 | +3.1pp | |
+| VUAMC P-tok | 0.238 | 0.355 | +11.7pp | |
+MAJOR: "scale lifts detection +18-20pp on BOTH phenomena" is FALSE at full N. Idiom holds (+19.6pp); METAPHOR collapses +20.5->+4.8pp. The old +20.5 was slice artifact (genre-clustered prefix inflated both 8B 0.430 & 70B 0.635; full N 0.254/0.302). New story: scale lifts IDIOM detection ~+20pp, METAPHOR detection only ~+5pp. Phenomenon-dependent.
+- Metaphor-vs-idiom ordering reversed at BOTH scales now (idiom>metaphor): 8B 0.333>0.254, 70B 0.529>0.302. (Thesis old: metaphor>idiom.)
+- Token-precision-driven story for VU holds (P-tok +11.7pp at scale); but sentence-F1 lift small.
+- THEME SURVIVES/STRENGTHENS: scale even less reliable (detection gain not consistent across phenomena, + no perceived-quality gain from survey). H1-partial holds (70B still << supervised).
+PROPAGATION (big): rewrite RQ1 §5.2/§5.3 scale narrative (drop "+18-20pp both"; phenomenon-split); tab:rq1-detection-scale all cells; discussion §8.4 "Scale dependence" paragraph; conclusion RQ1 verdict; §5.4 70B "this work" cells; the metaphor-vs-idiom flip. Keep theme.
+LAUNCHED: 70B dtr+pipeline both datasets (job b670t3ip1, ~10.5h overnight) -> completes the matrix. Run-ids will be in that job output.
+
+### 23-06-2026 (measurement caveat + targeted-binary control queued)
+- Added §5.3 first paragraph "What these detection scores measure" (number-free, survives propagation): MIPVU exhaustive gold -> recall ceiling (precision>recall throughout), score = agreement-with-MIPVU not E2R-relevant detection (conventional metaphors need no rewrite, -> Ch8); span-IoU granularity artifact; zero-shot; absolute scores understate competence + not comparable to supervised (tab:rq1-supervised); conclusions are RELATIVE (ceiling cancels). Compiles clean 57pp.
+- Targeted-binary control: a proper backend task needs MWE plumbing + new graph/prompt = a backend code change, and backend has http_autoreload=true -> editing now would KILL the running matrix. So using a STANDALONE script (scratchpad/targeted_binary_semeval.py): hits vLLM directly, SemEval EN dev (466, has dev_gold = leaderboard-comparable held-out split), gives the model the MWE, asks IDIOMATIC/LITERAL, computes binary + macro-F1 (SemEval metric). Run AFTER the matrix (70B busy now; 2nd client would over-subscribe). Will run on 70B first; 8B optionally if Jelle swaps. Produces a SUPPLEMENTARY fair §5.4 idiom number alongside the realistic open-ended detection number.
+
+### 23-06-2026 (agent diagram + system-prompts appendix; while matrix runs)
+- NEW fig:pipeline-internals (§3.2): the multi-step agent as implemented (LangGraph blueprint, distinct from F-2 conceptual contrast + fig:pipeline-example worked trace). Left spine: input -> Detect -> Explain -> Transform -> literal paraphrase (3 violet LLM-call nodes in a dashed GraphState container, edge labels "expressions" / "expression:meaning"). Right column off Detect: TaskOutput JSON schema (enforced, retry-on-invalid) -> deterministic Span extraction + token labelling -> detection outputs (RQ1). Caption carries retry, explain short-circuit, H4 explanations-persistence. Confirmed graph structure from graph.py (detect->explain->transform sequential) + nodes.py (span/token inline in detect).
+- NEW appendix:prompts (annex.tex "System Prompts"): verbatim idiom detect/explain/transform/monolithic + metaphor MIP detector, via listings (breaklines). Added \usepackage{listings} + \lstset to preamble. Note: metaphor explain/transform/monolithic analogous to idiom.
+- Compiles clean 58pp, 0 overfull. Both number-independent; backend untouched (matrix safe).
+- Figure inventory: F-1 architecture, F-2 3-arch contrast, fig:pipeline-internals (agent blueprint), fig:pipeline-example (worked trace), fig:poison-pill (§8.3), F-3 rating distributions. All on figstyles.
+
+### 23-06-2026 (§5.3 + tab:rq1-detection-scale rewritten to full-N; survey appendix item)
+- DONE: §5.2 intro (full sets not 200-slice), tab:rq1-detection-scale (all cells full-N), §5.3 analysis rewritten (3 paras: idiom>metaphor reversed; scale phenomenon-split idiom +19.6 / metaphor +4.8; schema-inversion +10/+25 @8B vs -3/-11 @70B). Removed old span-F1 para (subsumed by caveat). Survey appendix: added "Example rated items" (src_11 across 3 systems). Compiles 59pp clean.
+- TEMPORARY INCONSISTENCY: RQ1 now full-N; the rest still slice. Do NOT send draft until reconciled.
+- REMAINING DETECTION PROPAGATION CHECKLIST (old -> new), do in one pass when matrix completes:
+  * §5.4 (rq1) "this work" cells + prose: VU 70B 0.635 -> 0.302; SemEval 70B 0.435 -> 0.529. (token vs sentence caveat unchanged.)
+  * discussion §8.4 "Scale dependence" para: 200-slice 0.430->0.635 / 0.255->0.435 -> full-N (VU 0.254->0.302 +4.8pp; SemEval 0.333->0.529 +19.6pp); drop "+18-20pp both" -> phenomenon-split. KEEP survey-pool recompute (24/27, 21/27, span 0.350/0.638) - separate stable computation.
+  * discussion §8.1 keystone tab:model-dependence + prose (finding i): +12/+22 @8B / -28/-5 @70B -> +10/+25 @8B / -3/-11 @70B. finding (ii) "identical 3 decimals" -> "near-identical" (pending 70B VU pipeline cell 6c4c1fd5).
+  * conclusion RQ1 verdict: +18-20pp / 0.430->0.635 / 0.255->0.435 -> phenomenon-split full-N.
+  * rq3 §7 schema-inversion para (line ~64) + tab:rq3-semeval F1-sent/F1-span columns -> full-N. tab:rq3-semeval BLEU/BERTScore STAY (gold-subset); add footnote that detection cols are full-N, replacement cols gold-subset (base split).
+  * rq2_decomposition line ~103 scale-comparator numbers (0.635/0.435/0.430/0.255) -> full-N.
+  * metaphor-vs-idiom ordering: now idiom>metaphor everywhere (was reverse).
+  * Run-ids (full-N): det VU 2d322ad0/d47a01fb, SemEval 8141d880/7cbef03f; dtr VU 491d332c/ffd25507, SemEval d3a7a15c/162b7339; pipeline SemEval 8B b9f31108/70B 4bacbfb2, VU 8B 66726606 / 70B 6c4c1fd5(running).
+  * Add the 3.3-vs-3.1 version caveat to the scale framing (comparator is a later version).
+
+### 23-06-2026 (Discussion "why" depth + §8.1/§8.4 propagation)
+- NEW §8 subsection "Why the Replacements Preserve Meaning but Do Not Simplify": expansion-vs-compression mechanism (systems substitute a longer definition/gloss; humans compress). Real examples: all-rounders -> "business people with a wide range of skills and responsibilities"; 70B poison pill -> long gloss; respondent all-rounders -> "generally skilled in the business field". Explains why simplicity (not meaning) is the shortfall + why scale doesn't help (bigger model writes longer definitions). Number-independent. -> sec:future-work.
+- §8.4 "Scale dependence" REWRITTEN to full-N phenomenon-split + WHY: idiom +19.6pp vs metaphor +4.8pp; metaphor recall-bound vs exhaustive MIPVU gold (precision 0.238->0.355, recall flat 0.183->0.212); idiom discrete target. Kept survey-pool (24/27, 21/27, span 0.350->0.638) + Wilcoxon p=0.026 + hedge. ADDED 3.3-vs-3.1 version caveat (gap = upper bound on pure scale).
+- §8.1 keystone table row(i) + prose finding(i): +12/+22 vs -28/-5 -> +10/+25 vs -3/-11 (full-N). finding(ii) "identical 3 decimals all four" -> "within rounding" (+ note: residual diffs = failure sets). §8.4 model-dependence finding 1 (schema-inversion) -> full-N numbers + sharpened mechanism.
+- NOW CONSISTENT at full-N: §5.3 (RQ1) + §8.1 + §8.4. Compiles 60pp clean.
+- REMAINING old-slice spots for final pass: conclusion RQ1 verdict; §5.4 70B "this work" (0.635->0.302, 0.435->0.529); rq3 schema para + tab:rq3-semeval F1 cols; rq2 scale-comparator line. + targeted-binary §5.4 number + verify 70B VU pipeline cell (6c4c1fd5) for pipeline-identity.
+
+### 23-06-2026 (70B MATRIX COMPLETE — full detection/dtr/pipeline both datasets)
+COMPLETE full-N matrix (f1_sent / f1_span; VUAMC also f1_tok):
+8B  SemEval: det 0.333/0.204 | dtr 0.584/0.259 (BLEU .061 BERT .850) | pipe 0.332/0.204 (BLEU .066 BERT .849)
+8B  VUAMC:   det 0.254/0.033 (tok .206, P .238 R .183) | dtr 0.352/0.050 (tok .253) | pipe 0.254/0.033 (tok .207)
+70B SemEval: det 0.529/0.337 | dtr 0.496/0.272 (BLEU .066 BERT .850) | pipe 0.529/0.336 (BLEU .064 BERT .849)
+70B VUAMC:   det 0.302/0.064 (tok .265, P .355 R .212) | dtr 0.190/0.034 (tok .237; 1252 failed) | pipe 0.302/0.064 (tok .265)
+FINDINGS CONFIRMED at full N:
+- Scale lift (det, 8B->70B f1_sent): SemEval +19.6 (.333->.529); VUAMC +4.8 (.254->.302). Phenomenon-split (NOT +18-20 both). [in §5.3/§8.4]
+- Schema-inversion (det->dtr f1_sent): 8B +25/+10 (SemEval/VU); 70B -3/-11. Sign-flip holds. [in §5.3/§8.4/§8.1]
+- Pipeline == detection (f1_sent, within rounding ALL 4 cells): 8B SemEval .333/.332, 8B VU .254/.254, 70B SemEval .529/.529, 70B VU .302/.302. CONFIRMED. [§8.4 softened to "within rounding"]
+- idiom > metaphor detection both scales/metrics. [§5.3]
+Run-ids: det VU 2d322ad0/d47a01fb, SemEval 8141d880/7cbef03f; dtr VU 491d332c/ffd25507, SemEval d3a7a15c/162b7339; pipe VU 66726606/6c4c1fd5, SemEval b9f31108/4bacbfb2.
+DONE: §5.3, tab:rq1-detection-scale, §8.1 keystone, §8.4 model+scale dependence -> all full-N consistent.
+TARGETED-BINARY control running (job bxz5gtbic, 70B SemEval dev, leaderboard-style) -> §5.4 supplementary number.
+REMAINING PROPAGATION (final pass): conclusion RQ1 verdict; §5.4 70B "this work" cells (.635->.302 VU, .435->.529 SemEval) + targeted number; rq3 tab:rq3-semeval F1 cols (full-N) + schema para (+25/-3 etc.) + BLEU/BERT footnote (gold-subset basis); rq2 line ~103 scale-comparator. Then harness re-verify.
+
+### 23-06-2026 (targeted-binary control: DROPPED)
+- After 5 runs: urllib conc6/conc3 + max_tokens fix all hit ~78% request failures (ngrok free per-connection throttling, NOT parse/truncation); requests+openai absent from local venv; stdlib keep-alive (serial, 1 reused connection) finally ran clean (0 req errors, 466/466) -> infra solved.
+- BUT result anomalous: acc 0.212 (anti-correlated, below chance/majority), tp25/fp108/fn259/tn74. Diagnostic: model CORRECT on visible "high life" items (gold 1 -> IDIOMATIC), so the dev.csv<->dev_gold ID join is misaligning on the bulk (first 8 aligned by coincidence, all same MWE+label). = a gold-join bug, not a real result.
+- DECISION: DROP the targeted-binary control. Supplementary (§5.4 already hedges "indicative, not leaderboard-comparable", which the full-N rerun VINDICATED). Not worth more debugging vs deadline. §5.4 keeps the honest hedge; no targeted number added.
+- Infra lesson: free ngrok tunnel throttles a churning direct client; the matrix worked because the backend uses pooled keep-alive (langchain/httpx in the container). For any future direct eval, use one persistent connection.
+- Scripts (scratchpad): targeted_binary_semeval.py, targeted_binary_keepalive.py (kept for reference; join needs fixing if ever revisited).
+
+### 23-06-2026 (FINAL detection propagation COMPLETE — draft now fully full-N consistent)
+- DONE the remaining propagation pass (all 5 checklist items + 2 extras found en route):
+  * conclusion RQ1 verdict -> phenomenon-split full-N (idiom +19.6pp 0.333->0.529; metaphor +4.8pp 0.254->0.302; schema +10/+25 @8B vs -3/-11 @70B). Comment block updated too.
+  * §5.1 setup bullet: "200 examples" -> full evaluation sets (16,202 VU / 3,487 SemEval).
+  * §5.4 tab:rq1-supervised "this work" cells: VU 0.635->0.302, SemEval 0.435->0.529; comparability cols dropped "200-ex slice"; prose 0.635->0.302 / 0.435->0.529 + "full test set against slice" -> "supervised against zero-shot". §5.4 mandatory-hedge comment reworded (no slice).
+  * rq2 pipeline-identity para -> full-N + softened ("near-identical", residual SemEval 8B 0.333 vs 0.332 = parse-failure sets).
+  * rq3 tab:rq3-semeval detection cols -> full-N (v2 0.584/0.259 & 0.496/0.272; pipeline 0.332/0.204 & 0.529/0.336); v1 detection -> "---" (not rerun, replacement-only); BLEU/BERTScore KEPT (gold subset) with explicit basis-split footnote + dual run-id sets. §7.2 setup + no-CoT-benefit para (BLEU/BERT only) + schema-inversion para (+25/-3, new run-ids).
+  * EXTRA: tab:rq3-vu refreshed full-N (det 0.254/0.206/0.033; dtr 0.352/0.253/0.050), v1 row dropped, N col dropped; H3 para rewritten (idiom dtr 0.584/0.496 > metaphor 0.352/0.190, ordering now directly supports H3, dropped the "at first glance favours metaphors" hedge); dtr-stronger-detection para (+9.8pp VU / +25pp SemEval) + 70B-reverses note; §7.5 scale clause 0.255->0.435 slice -> 0.333->0.529 full set.
+  * EXTRA: discussion.tex:207 future-work bullet 0.430 -> 0.254 (last stray slice number).
+- v1-stub decision: kept the v1 row in tab:rq3-semeval for REPLACEMENT metrics only (gold-subset BLEU/BERT, which is its sole purpose); detection cells "---" since v1 was never rerun at full N. Same logic dropped v1 from tab:rq3-vu (pure detection table). Flagged to user.
+- BUILD: latexmk clean, 62 pages, 0 overfull, no undefined refs/citations (only the pre-existing benign OMS/lmtt font-shape warning).
+- VERIFY HARNESS (2 read-only agents): PASS. Coherence+numeric: all numbers match canonical matrix, 0 cross-section contradictions, 3 hedges verbatim. References §5.4: Neidlein2020 + Jia2024 tier-1 PDF-confirmed, tayyar-madabushi tier-2 (no PDF). 
+- STATUS: draft is now on ONE consistent full-N basis. No endpoint dependency remains. Targeted-binary control stays DROPPED. Remaining = personalisation only (acknowledgement names, AI-disclaimer wording), resumen native review, Jun 26 read-through.
+
+### 23-06-2026 (acknowledgement + section-by-section language pass)
+- Acknowledgement drafted from vault knowledge (Mari Carmen/UPM; 2Hero AB infra+internship; survey volunteers; joint KTH/UPM). TODOs left for Jelle: KTH examiner name, personal acks, confirm 2Hero framing (credited software infra NOT GPU compute, since §5.1 says UPM A100 cluster).
+- 9 read-only language-review agents (one per prose chapter) vs Jelle's style rules. KEY: agents hallucinated 4 em-dashes that don't exist (mechanical grep = 0 banned punct everywhere); trust grep over agents on punctuation. British English is consistent + deliberate (keep; do NOT Americanise "programme" etc.).
+- Fixed: 2 stray lowercase "easy-to-read" -> "Easy-to-Read" (31:2 dominant). 3 background smoothings (choppy metaphor beat colon-merge; "identified only"->"found that...recovered only"; "can actually be deployed"->"can be deployed in practice").
+- §7.7 Qualitative Examples DRAFTED (was the last TODO stub) from real survey data (item_scores.csv + survey_items.csv): bear the cross (8b clean hit 91/88/95), top dog->"most powerful or dominant entity" (meaning-kept-not-simpler 98/97/47; quoted clause only, source has an em-dash), a silver bullet (over-explanation failure 51/60/24). All 8b deliverable, verbatim, no overlap with §7.6/§8.3.
+- Register data-scan (scratchpad/register_scan.py): choppiness not an issue (short lines are deliberate punchy ones / headers). "lexicalized" now 0. Applied per Jelle: adjudicate->settle/decide, salient->removed/"more obvious", ablation->controlled comparison/control condition/comparisons/variants (incl. subsection title), split 3 longest sentences. Build 63pp clean, 0 residual prose occurrences of those words.
+- STILL OPEN: front-matter personals (KTH name, personal acks, 2Hero confirm); resumen native review; Jun 26 read-through (esp. register feel, the one dimension agents judge weakly).
+
+### 23-06-2026 (cohort gap-closing: glossary + appendices; 63 -> 71pp)
+- Compared thesis vs 7 UPM TFMs in "1 - Thesis/Other Theses" (all HCI/Design TFMs, not NLP): others 71-168pp (median ~107), main bodies ~50-90 (median ~63), refs 18-72 (median ~30). Ours: refs 33 = ABOVE median (grounding fine); body rigor competitive/ahead (3 results chapters + stats + human eval w/ QC). Gap was total size, driven by their huge transcript appendices + 1.5/double spacing. Dense LaTeX 63pp ~= ~90pp Word.
+- ADDED (all legitimate, no body padding):
+  * includes/glossary.tex -> "List of Acronyms" front matter (16 acronyms). Wired into main.tex after index_equations.
+  * \usepackage{longtable} added.
+  * annex §10.3 Ethics & Informed Consent: eligibility Q, consent Q, VERBATIM OEG data-protection statement (from respondent_20_form.md, the real survey text).
+  * annex §10.4 Experimental Configuration & Run Index: models/serving/T0/concurrency + run-id table (tab:appendix-runs) mapping every reported number to its run.
+  * annex §10.5 Per-Respondent QC: includes/tab_qc.tex (22 respondents, generated from results/qc_report.csv; 20 pass/2 drop).
+  * annex §10.6 Per-Item Scores: includes/tab_item_scores.tex (81 rows = 27 sources x 3 systems, generated from results/item_scores.csv; longtable).
+  * annex §10.7 Sample of alt replacements (tab:appendix-alternatives, 5 fresh examples from responses_long.csv freetext).
+- Generated tables via scratchpad python from the survey CSVs (authoritative; summary_by_system matches tab:rq3-survey-results exactly). NB: MARI_CARMEN_KIT.md is an OUTDATED draft (says 28 sources/84 items + a "corporate defense tactic" src_05 output) -> IGNORED; used final 27/81 + CSVs + thesis poison-pill (unchanged no-op).
+- BUILD: 71pp, clean, 0 undefined refs, 0 banned punct. Now in cohort range (Nguyen=71).
+- STILL OPEN: front-matter personals (KTH name, personal acks, 2Hero framing confirm); resumen native review; Jun 26 read-through.
+
+### 23-06-2026 (Couchbase backup before stack teardown)
+- Couchbase volume is NOT mounted -> `pt down` wipes it. Backed up the `main` bucket (the only data bucket; `default` does not exist) before teardown. 138,137 docs: predictions 118,344 / datasets 19,689 / evaluations 90 / runs 14.
+- Backups on disk at ~/Repositories/thesis/e2r-adaptation/cb-backup/ (NOT in git, 109MB+32MB -> move somewhere durable):
+  * cb_main.json (109MB) JSON-lines export. Restore: cbimport json ... --scope-field __scope --collection-field __collection --generate-key '%__key%'.
+  * cbbackupmgr-archive.tgz (32MB) 1:1 restorable. Restore: untar, cbbackupmgr restore --archive <dir> --repo e2r ... (bucket main or --auto-create-buckets).
+- All 12 full-N matrix runs (det/dtr/pipeline x 8B/70B x SemEval/VU) preserved WITH predictions. The 5 replacement gold-subset slice runs (3551e201,56f19b8c,92941662,b2b174ea,d6bc60b0) were already gone (May-4 wipe); their BLEU/BERTScore numbers live only in tab:rq3-semeval (acceptable, already in report).
+- SAFE TO TAKE DOWN. Survey CSVs (the irreplaceable human data) are on disk in "1 - Thesis/Survey/results/", never were in Couchbase.

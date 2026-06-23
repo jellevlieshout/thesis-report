@@ -2,9 +2,32 @@
 \label{sec:rq3}
 \textit{How effectively can figurative expressions be replaced with literal, meaning-preserving alternatives?}
 
+% ============================================================================
+% === WRITING GUIDE: Chapter 7, RQ3 (~8 pages; the evidentiary heart) =======
+% ============================================================================
+% JOB: show that automatic replacement metrics are insensitive (BLEU ~0.40,
+% BERTScore ~0.915 across all conditions; metaphors unmeasurable for lack of
+% gold paraphrases, itself H3 evidence), then let the survey deliver what the
+% metrics cannot: systems preserve meaning but fail to simplify, and the 70B
+% is rated significantly WORSE on the E2R-critical dimension.
+% Remaining work: 7.6 Survey Results prose (~1,200 w around the tables
+% below) and 7.7 qualitative examples (~400 w).
+% MANDATORY HEDGES:
+%  - 70B simplicity: "in this setup, scale did not buy, and on simplicity
+%    may have cost, human-perceived quality" (one dimension, one comparison,
+%    20 raters; never "scale hurts quality" unqualified).
+%  - Simplicity is uniformly the weakest dimension (52-64 raw vs 78-85):
+%    the single most E2R-relevant sentence of the thesis is "systems
+%    preserve meaning but do not simplify."
+% THEME HOOK: open: "automatic metrics report near-identical scores for
+% every system in this chapter; everything we learn comes from structured
+% human judgement"; close: "the structured evaluation saw what BERTScore
+% could not: the biggest model produced the least readable output."
+% ============================================================================
+
 \subsection{Experimental Setup}
 
-Replacement experiments use the \textit{detect-then-replace} task variant: the model detects figurative spans and in the same call produces a literal paraphrase of the full sentence. All experiments use \texttt{google/gemini-3-flash-preview}, temperature~0. Two prompt versions are evaluated:
+Replacement experiments use the \textit{detect-then-replace} task variant: the model detects figurative spans and in the same call produces a literal paraphrase of the full sentence. All experiments use the open-weights cluster (\texttt{meta-llama/Meta-Llama-3.1-8B-Instruct}, FP16; and \texttt{casperhansen/llama-3.3-70b-instruct-awq} as a scale comparator), temperature~0. Two prompt versions are evaluated:
 \begin{itemize}
     \item \textbf{Prompt v1}: a minimal stub instructing the model to identify figurative expressions and provide a literal paraphrase (three lines of instruction).
     \item \textbf{Prompt v2}: a chain-of-thought prompt instructing the model to (1) identify each expression, (2) reason about its meaning in context, and (3) rewrite the full sentence with all figurative parts replaced, keeping non-figurative content unchanged. Includes one illustrative example.
@@ -12,56 +35,194 @@ Replacement experiments use the \textit{detect-then-replace} task variant: the m
 
 \subsection{Idiom Replacement (SemEval 2022)}
 
-SemEval 2022 Task B provides gold literal paraphrases for a subset of Task A sentences, enabling automatic evaluation of replacement quality using BLEU and BERTScore. Table~\ref{tab:rq3-semeval} reports results for two runs: 100 examples with prompt v1 and 20 examples with prompt v2.
+SemEval 2022 Task B provides gold literal paraphrases for a subset of Task A sentences, enabling automatic evaluation of replacement quality using BLEU and BERTScore. Table~\ref{tab:rq3-semeval} reports detect-then-replace results across two prompts (v1 stub, v2 chain-of-thought) and two architectures (single-call structured output, 3-step pipeline) on both Llama-3.1-8B-Instruct and Llama-3.3-70B-Instruct-AWQ ($T=0$). The two metric families rest on different bases, which the table separates: the detection metrics (F1-sent, F1-span) are computed on the full evaluation set, while the reference-based replacement metrics (BLEU, BERTScore) are computed on the SemEval Task B gold-paraphrase items within the deterministic 200-example slice, the only items for which a gold literal paraphrase exists. The replacement metrics are not refreshed to the full set: gold-paraphrase coverage over the full 3{,}487 items is too sparse to compute them reliably (Section~\ref{sec:rq2}).
 
 \begin{table}[h!]
 \centering
-\begin{tabular}{llllll}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llllllr}
 \hline
-\textbf{Prompt} & \textbf{N} & \textbf{F1-sent} & \textbf{F1-span} & \textbf{BLEU} & \textbf{BERTScore F1} \\
+\textbf{Architecture} & \textbf{Prompt} & \textbf{Model} & \textbf{F1-sent} & \textbf{F1-span} & \textbf{BLEU} & \textbf{BERTScore F1} \\
 \hline
-v1 (stub)            & 100 & 0.750 & 0.352 & 0.047 & 0.847 \\
-v2 (chain-of-thought) & 20  & 0.600 & 0.200 & 0.158 & 0.863 \\
+Single-call CoT & v1 (stub)              & 8B  & ---   & ---   & 0.397 & 0.914 \\
+Single-call CoT & v2 (chain-of-thought)  & 8B  & 0.584 & 0.259 & 0.400 & 0.915 \\
+Single-call CoT & v2                     & 70B & 0.496 & 0.272 & 0.423 & 0.915 \\
 \hline
-\end{tabular}
-\caption{Idiom detect-then-replace results on SemEval 2022. BLEU and BERTScore are computed against gold Task B paraphrases. F1-sent and F1-span measure detection quality on the same examples. Note that the v1 and v2 sample sizes differ (100 vs.\ 20), so direct comparison carries variance.}
+3-step pipeline & n/a                    & 8B  & 0.332 & 0.204 & 0.430 & 0.916 \\
+3-step pipeline & n/a                    & 70B & 0.529 & 0.336 & 0.414 & 0.915 \\
+\hline
+\end{tabular}%
+}
+\caption{Idiom detect-then-replace on SemEval 2022 Task A/B, $T=0$. Single-call CoT runs use the structured-output schema requiring detection + replacement in one inference; 3-step pipeline runs separate detection, explanation, and transformation into three sequential LLM calls. \textbf{Detection metrics} (F1-sent, F1-span) are computed on the full evaluation set (runs: 8B v2 \texttt{d3a7a15c}, 70B v2 \texttt{162b7339}, 8B pipeline \texttt{b9f31108}, 70B pipeline \texttt{4bacbfb2}); the v1 stub was not rerun for detection at full scale (---), as the thesis uses the v2 prompt throughout. \textbf{Replacement metrics} (BLEU, BERTScore) are computed on the Task B gold-paraphrase items within the deterministic 200-example slice, the only items with a gold literal paraphrase (runs: 8B v1 \texttt{b2b174ea}, 8B v2 \texttt{d6bc60b0}, 70B v2 \texttt{92941662}, 8B pipeline \texttt{3551e201}, 70B pipeline \texttt{56f19b8c}).}
 \label{tab:rq3-semeval}
 \end{table}
 
-The prompt v2 improves replacement quality substantially: BLEU increases from 0.047 to 0.158 and BERTScore F1 from 0.847 to 0.863. The slight drop in sentence and span F1 for v2 is likely due to sample variance (20 examples). These results suggest that chain-of-thought prompting with an explicit reasoning step improves literal paraphrase quality even in a zero-shot setting.
+\paragraph{The chain-of-thought prompt gives no measurable benefit on Llama-3.1-8B.} On the gold-paraphrase subset, the v1 (minimal) and v2 (chain-of-thought) prompts produce statistically indistinguishable replacement outputs on 8B: BLEU 0.397 vs.\ 0.400 (+0.3pp) and BERTScore F1 0.914 vs.\ 0.915 (+0.1pp). The most likely explanation is that the Llama Instruct chat template already applies similar reasoning scaffolding by default, so spelling the identify--reason--rewrite steps out in the prompt adds little on this model. The thesis uses the v2 prompt throughout but does not claim a prompt-level gain from it.
 
-BLEU values are low overall (0.047--0.158), which is expected given the nature of the task: valid literal paraphrases of idiomatic expressions often share no n-grams with the gold reference. For example, the idiom \textit{smoking gun} may be correctly replaced with \textit{decisive evidence} or \textit{conclusive proof}, neither of which overlaps with the reference. BERTScore (0.847--0.863) provides a more informative signal, capturing semantic proximity at the embedding level.
+\paragraph{The pipeline architecture's BLEU advantage shrinks to zero at scale.} On 8B the 3-step pipeline beats single-call CoT v2 by +3pp BLEU (0.430 vs.\ 0.400). On 70B the same comparison flips slightly to a $-1$pp difference (0.414 vs.\ 0.423), within sample noise. BERTScore F1 is tied at $\sim$0.915 in all four cells. The pipeline's small-scale BLEU advantage is therefore concentrated at 8B and partially attributable to a known artefact: when the pipeline's detection step finds nothing, the transform step short-circuits and returns the input sentence unchanged; the input shares roughly 85\% of its tokens with the gold paraphrase, so those examples score artificially high on BLEU. This artefact contributes more to the 8B aggregate (which has lower detection recall, so more fall-throughs) than to the 70B aggregate. The cleaner read is that scale lifts detection F1 substantially while leaving replacement quality flat on automatic metrics, a dissociation we develop in the analysis below.
+
+\paragraph{Single-call CoT detection F1 inverts at scale, on both phenomena.} 8B SemEval idiom: detection-only sentence F1 is 0.333 (run \texttt{8141d880}); the same model under dtr v2 jumps to 0.584 ($+25$pp from its detection-only baseline). 70B-AWQ SemEval idiom: detection-only sentence F1 is 0.529 (run \texttt{7cbef03f}); the same model under dtr v2 \emph{drops} to 0.496 ($-3$pp from its detection-only baseline). The same prompt that helps 8B by $+25$pp hurts 70B by $-3$pp on the same dataset. Mechanism is consistent with the VU metaphor inversion (Section~\ref{sec:rq1}, $+10$pp at 8B / $-11$pp at 70B): the 70B's token precision climbs when forced to commit alongside a paraphrase, but its recall drops as it over-commits to ``no idiom'' on borderline examples. The schema scaffold helps 8B and distorts 70B. (Detect-then-replace runs \texttt{d3a7a15c}/\texttt{162b7339}.)
+
+BLEU values are low overall (0.397--0.430), as expected: valid literal paraphrases of idiomatic expressions often share no n-grams with the gold reference. The idiom \textit{smoking gun}, for example, may be correctly replaced with \textit{decisive evidence} or \textit{conclusive proof}, neither of which overlaps with the reference. BERTScore (0.914--0.916) is the more informative automatic signal here, capturing semantic proximity at the embedding level; the human-evaluation survey (Section~\ref{subsec:rq3-human-eval}) provides the definitive judgement on grammaticality, meaning preservation, and simplicity.
 
 \subsection{Metaphor Replacement (VU Amsterdam)}
 
-The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore inapplicable. Replacement quality for metaphors must therefore be assessed through (a) detection metrics on detect-then-replace runs and (b) human evaluation (planned). Table~\ref{tab:rq3-vu} compares detection metrics for detection-only vs.\ detect-then-replace runs on the same dataset.
+The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore inapplicable. Replacement quality for metaphors is therefore assessed through (a) detection metrics on detect-then-replace runs (Table~\ref{tab:rq3-vu}) and (b) qualitative inspection. Metaphor replacement is not in scope for the human-evaluation survey: as discussed in Section~\ref{sec:eval-methodology}, the rubric triad (grammaticality, meaning preservation, simplicity) is calibrated for idiom replacement, where the figurative-to-literal mapping is well-defined; conventional metaphors (\textit{life is a journey}) often do not require replacement at all, and including them would dilute the rated pool.
 
 \begin{table}[h!]
 \centering
-\begin{tabular}{lllll}
+\begin{tabular}{llll}
 \hline
-\textbf{Task} & \textbf{N} & \textbf{F1-sent} & \textbf{F1-tok} & \textbf{F1-span} \\
+\textbf{Task} & \textbf{F1-sent} & \textbf{F1-tok} & \textbf{F1-span} \\
 \hline
-Detection only        & 200 & 0.452 & 0.441 & 0.202 \\
-Detect-then-replace   & 100 & 0.293 & 0.318 & 0.044 \\
+Detection only            & 0.254 & 0.206 & 0.033 \\
+Detect-then-replace (v2)  & 0.352 & 0.253 & 0.050 \\
 \hline
 \end{tabular}
-\caption{Metaphor detection metrics for detection-only vs.\ detect-then-replace runs (VU Amsterdam, prompt v1). The lower performance on the detect-then-replace task is partly attributable to the smaller sample (100 vs.\ 200 examples) and partly to the additional cognitive load imposed by simultaneous replacement.}
+\caption{Metaphor detection metrics for detection-only vs.\ detect-then-replace (chain-of-thought, v2) runs on the full VUAMC evaluation set (16{,}202 sentences; Llama-3.1-8B-Instruct, $T=0$). The detect-then-replace task lifts sentence F1 by 9.8 percentage points over detection-only. Runs: detection \texttt{2d322ad0}, detect-then-replace \texttt{491d332c}.}
 \label{tab:rq3-vu}
 \end{table}
 
-Detection metrics are lower on the detect-then-replace task, suggesting that asking the model to simultaneously produce a replacement paraphrase may shift attention away from precise span localisation. This is consistent with observations in the SemEval results (lower F1-span for v1 replacement vs.\ detection-only).
-
 \subsection{Analysis}
 
-\paragraph{BLEU is poorly suited to replacement evaluation.} Even for correctly paraphrased idioms, BLEU scores are in the range 0.05--0.16, confirming the known limitations of n-gram overlap metrics for tasks with multiple valid outputs. BERTScore is the preferred automatic metric; human evaluation is required for a definitive assessment.
+\paragraph{BLEU is structurally misaligned with replacement evaluation.} For tasks with multiple valid outputs, BLEU's n-gram overlap requirement penalises correct paraphrases that diverge lexically from the reference. BERTScore, which compares contextual embeddings, partially addresses this; but neither correlates reliably with human judgement on simplification-style tasks~\cite{Alva-Manchego2021,Scialom2021}, motivating the human-evaluation protocol below.
 
-\paragraph{Idioms are replaced more reliably than metaphors.} This is consistent with Hypothesis~H3: idiomatic expressions have more constrained and conventionalised meanings, making them more tractable targets for zero-shot paraphrase generation. Metaphors, particularly those involving abstract source--target mappings, require a deeper understanding of the specific context, which current zero-shot prompting may not consistently achieve.
+\paragraph{Idioms outperform metaphors at every replacement-relevant metric (H3).} On the full evaluation sets the detect-then-replace sentence F1 is higher for idioms than for metaphors at both scales (idiom 0.584 at 8B and 0.496 at 70B; metaphor 0.352 at 8B and 0.190 at 70B), consistent with H3 and with the detection ordering reported in Section~\ref{sec:rq1}. The contrast is sharper still on the replacement side proper: on idioms the system produces a meaning-preserving literal paraphrase that can be scored against a gold reference (BLEU 0.40, BERTScore 0.91 on the gold-paraphrase subset) whereas the VUAMC has no gold paraphrase against which to score the metaphor rewrite at all: the absence of a measurable replacement metric for metaphors itself is consistent with H3's underlying claim that metaphor-to-literal mappings are less constrained. The human-evaluation survey covers idiom replacement only and will provide the definitive H3 evidence on the rubric dimensions.
 
-\paragraph{Replacement degrades detection slightly.} Adding the replacement requirement reduces detection F1 on both datasets. For future experiments, it may be worth separating detection and replacement into two sequential LLM calls to avoid this interference.
+\paragraph{The detect-then-replace prompt produces stronger detection than detection-alone on Llama-3.1-8B-Instruct.} On both datasets, sentence F1 in detect-then-replace exceeds detection-only (VU metaphor: 0.254 $\to$ 0.352, $+9.8$pp; SemEval idiom: 0.333 $\to$ 0.584, $+25$pp). The structured-output schema in detect-then-replace appears to disambiguate the task for the model: forcing it to commit to a specific paraphrase pulls along sharper span identification. This is itself early evidence for RQ2 (decomposition $>$ monolithic): even the trivial decomposition of \emph{adding the replacement step} changes detection behaviour for the better at this scale. The same prompt change reverses sign on the 70B model (Section~\ref{sec:rq1}), so this is a small-scale effect, not a general one.
 
-\paragraph{Human evaluation (planned).} An annotation study covering 40--50 examples from the detect-then-replace runs is planned, using the meaning fidelity scale described in Section~\ref{sec:eval-methodology}. Annotators will rate the system's literal paraphrase on a 1--5 scale and optionally provide a preferred alternative. Examples for annotation will be selected using the \texttt{GET /runs/\{run\_id\}/export} endpoint, filtering for shorter sentences ($< 20$ words) where the system produced a non-empty replacement.
+\paragraph{Scale ($8$B $\to$ $70$B) lifts detection, with replacement quality deferred to the survey.} Recomputing detection on the 27-source survey pool from the rated three-step-pipeline outputs, the 70B comparator detects a figurative expression in 24 of 27 sources against the 8B system's 21 of 27, and localises the span considerably more accurately (span F1 $0.350 \to 0.638$ at IoU $\geq 0.5$). Every survey-pool source is figurative, so sentence-level precision is fixed at $1.0$ and sentence F1 reduces to detection recall ($0.778 \to 0.889$); the detection comparison that includes negative examples is the full evaluation set (Table~\ref{tab:rq3-semeval}: sentence F1 $0.333 \to 0.529$, $+19.6$pp). Reference-based replacement metrics are not reported on this pool. SemEval Task A supplies no literal-paraphrase reference, and the Task B paraphrase that exists for a minority of items is a distinct sentence sharing only the idiom, so BLEU and BERTScore against it measure cross-sentence overlap rather than replacement quality. The dissociation is therefore clean at this size class: scale sharpens the model's ability to \emph{find} and delimit the figurative expression, while its ability to \emph{rewrite} the expression is assessed by the human rubric (Section~\ref{subsec:rq3-human-eval-results}) rather than by automatic metrics.
 
-% TODO: Add qualitative examples of correct, partially correct, and incorrect replacements.
+\subsection{Human Evaluation}
+\label{subsec:rq3-human-eval}
+
+The replacement task is evaluated by Direct Assessment~\cite{Graham2013,Graham2017}; the protocol, rubric, standardisation, and three departures from the original DA specification are described in Chapter~\ref{ch:methodology}. This section gives the survey \textit{instantiation}: conditions compared, source-sentence pool, item counts, and respondent recruitment. The full instrument (item layout, example items, and bad-reference construction recipe) is reproduced in Appendix~\ref{appendix:survey-design}, and the consent flow and data-protection statement in Appendix~\ref{appendix:ethics}.
+
+\paragraph{Conditions.} The survey rates outputs from three open-weights conditions, all on the same set of source sentences:
+\begin{itemize}
+    \item \textbf{Llama-3.1-8B + agentic 3-step pipeline} (detect $\to$ explain $\to$ transform), the deliverable system;
+    \item \textbf{Llama-3.1-8B + monolithic single-prompt}, the RQ2 control condition, isolating the contribution of agentic decomposition;
+    \item \textbf{Llama-3.3-70B-Instruct-AWQ + agentic 3-step pipeline}, the within-family scale comparator for RQ1.
+\end{itemize}
+No hosted-LLM condition is included in the human evaluation: the survey is reserved for the open-weights deliverable system and its controlled variants.
+
+\paragraph{Pool and instrument.} Sources are drawn from a candidate pool of 50 SemEval-idiom items selected from a Llama-3.1-8B detect-then-replace run, filtered for sentence length ($<30$ words), expression length ($\leq 4$ words), and presence of a system-produced replacement; 30 sources were sampled by stratified random selection. Three sources were subsequently excluded: two during manual bad-reference review (the gold expression was judged literal in context) and one for contaminated gold annotation (the SemEval gold listed canonical idioms not present in the sentence). The final pool is therefore 27 sources, each rated under all three conditions: $27 \times 3 = 81$ items. Each respondent rates 20 items (16 rated + 4 quality-control), system-balanced and position-randomised per respondent; with a target of $\geq 3$ ratings per item this requires at least 16 respondents. Respondents are native English speakers or non-native speakers with 10+ years of residence in an English-speaking country; recruitment statistics are reported with the results (Section~\ref{subsec:rq3-human-eval-results}).
+
+\paragraph{Rubric.} Three independent 0--100 continuous sliders per item: grammaticality, meaning preservation, simplicity (Section~\ref{sec:eval-methodology}). Annotators are blind to the system-of-origin; system identifiers live in analysis-side metadata only.
+
+\paragraph{Quality control.} Two bad-reference items and two repeat-pair items per respondent, embedded among the 16 rated items (a 20\% quality-control share), following the bad-reference and repeat-pair techniques of \cite{Graham2013}, which itself embedded a larger proportion of control items; fixed-threshold filters are used in place of \cite{Graham2017}'s per-worker significance test, for the small-sample reasons documented in Section~\ref{sec:qc-filter-design}.
+
+\paragraph{Aggregation.} Per-annotator z-score standardisation before per-item aggregation, with mean $\pm$ 95\% confidence interval reported for each rubric dimension and a composite summary across the three. Intra-annotator consistency is monitored through the repeat-pair absolute differences (Section~\ref{sec:qc-filter-design}).
+
+\subsection{Survey Results}
+\label{subsec:rq3-human-eval-results}
+
+The survey is the only instrument in this thesis that scores replacement quality directly, and it closes the measurement gap left by the automatic metrics above. The results are reported in four parts: the response and quality-control statistics (Table~\ref{tab:rq3-survey-qc}), the per-system rubric scores (Table~\ref{tab:rq3-survey-results}), the within-family scale comparison that answers the RQ1 cut, and the free-text alternatives that respondents supplied.
+
+% --- GUIDE (~2.5 pp, ~1,200 words): the payoff section of the thesis.
+% Structure the prose in four moves:
+%  (1) Response and QC statistics (Table~\ref{tab:rq3-survey-qc}): 22
+%      responses collected (19 native speakers, 3 long-term residents);
+%      2 respondents excluded by the repeat-pair filter (mean |diff| > 25);
+%      no bad-reference flags; 20 respondents kept. Coverage: all 81
+%      (source, system) pairs have >= 2 ratings; 71/81 have >= 3.
+%  (2) Per-system scores (Table~\ref{tab:rq3-survey-results}). Grammar and
+%      meaning are high (78-85 raw) for all systems; simplicity is
+%      uniformly the weakest dimension (52-64). THE headline sentence:
+%      systems preserve meaning but do not simplify. For E2R adaptation
+%      this is the remaining gap, and no automatic metric in Section 7.2
+%      could see it (BERTScore was ~0.915 for everything).
+%  (3) The scale comparison (RQ1 cut): 70B agentic is directionally lower
+%      on every dimension and significantly lower on simplicity (paired by
+%      source, n=27: delta-z = -0.347 vs 8B agentic, Wilcoxon p = 0.026;
+%      t p = 0.075); composite p = 0.066. Apply the mandatory hedge.
+%  (4) The 108 free-text alternative replacements respondents provided:
+%      qualitative signal of what humans do that systems do not (shorten
+%      and restructure, not just substitute). 1-2 examples here; fuller
+%      treatment optional in the Discussion.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lrrr|rrrr}
+\hline
+& \multicolumn{3}{c|}{\textbf{Raw means (0--100)}} & \multicolumn{4}{c}{\textbf{Standardised ($z$)}} \\
+\textbf{System} & \textbf{Gram.} & \textbf{Mean.} & \textbf{Simp.} & \textbf{Gram.} & \textbf{Mean.} & \textbf{Simp.} & \textbf{Comp.} \\
+\hline
+Llama-3.1-8B agentic     & 83.1 & 81.6 & 60.6 & $0.411$ & $0.336$ & $-0.378$ & $0.123$ \\
+Llama-3.1-8B monolithic  & 85.4 & 72.6 & 64.1 & $0.520$ & $0.069$ & $-0.214$ & $0.125$ \\
+Llama-3.3-70B agentic    & 78.4 & 76.4 & 51.9 & $0.253$ & $0.162$ & $-0.674$ & $-0.086$ \\
+\hline
+\end{tabular}
+\caption{Human-evaluation results by system: raw 0--100 means and per-annotator-standardised ($z$) scores per rubric dimension, with the composite as the mean of the three standardised dimensions. 20 respondents after quality control; all 81 (source, system) pairs rated $\geq 2$ times, 71 of 81 rated $\geq 3$ times.}
+\label{tab:rq3-survey-results}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lr}
+\hline
+Responses collected & 22 \\
+\quad native English speakers & 19 \\
+\quad long-term residents (10+ years) & 3 \\
+Excluded: repeat-pair filter (mean $|$diff$|$ $> 25$) & 2 \\
+Excluded: completion filter ($<10$ of 20 items) & 0 \\
+Flagged: bad-reference rule & 0 \\
+Respondents retained & 20 \\
+\hline
+(source, system) pairs with $\geq 3$ ratings & 71 / 81 \\
+(source, system) pairs with $= 2$ ratings & 10 / 81 \\
+Free-text alternative replacements collected & 108 \\
+\hline
+\end{tabular}
+\caption{Survey response and quality-control statistics (filters defined in Section~\ref{sec:qc-filter-design}).}
+\label{tab:rq3-survey-qc}
+\end{table}
+
+% --- FIGURE F-3 (replace placeholder): per-system, per-dimension score
+% distributions (box or violin). Source data: 1 - Thesis/Survey/results/
+% (responses_long.csv, ratings_by_system.png is a draft version).
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.9\textwidth]{images/fig_rating_distributions.pdf}
+\caption{Distribution of raw 0--100 ratings per system and rubric dimension (20 retained respondents; bad-reference and repeat items excluded). Grammaticality and meaning preservation are high across all systems, while simplicity is the weakest dimension for every system and lowest for the 70B agentic comparator.}
+\label{fig:survey-distributions}
+\end{figure}
+
+\paragraph{Response and quality control.} Twenty-two forms were returned, 19 from native English speakers and 3 from non-native speakers resident in an English-speaking country for ten years or more (Table~\ref{tab:rq3-survey-qc}). Two respondents were excluded by the repeat-pair consistency filter, their mean absolute first-versus-second-showing difference exceeding 25 points on the 0--100 scale; none fell below the completion threshold, and none were flagged by the bad-reference rule. Twenty respondents were retained; the per-respondent quality-control outcomes are listed in Appendix~\ref{appendix:qc-table}. Their ratings cover all 81 (source, system) pairs at least twice and 71 of the 81 at least three times, meeting the target coverage on the large majority of items. The retained sample is small and predominantly native-speaker, so the analysis standardises ratings per annotator before aggregation (Section~\ref{sec:qc-filter-design}) to remove individual differences in scale use, and reports the system comparisons paired by source to control for item difficulty.
+
+\paragraph{The systems preserve meaning but do not simplify.} Across all three conditions, grammaticality and meaning preservation are rated highly while simplicity is rated substantially lower (Table~\ref{tab:rq3-survey-results}; the full per-item breakdown is in Appendix~\ref{appendix:item-scores}). Raw grammaticality means fall between 78.4 and 85.4, and meaning preservation between 72.6 and 81.6, whereas simplicity ranges only from 51.9 to 64.1. The gap is consistent across systems: each loses roughly twenty to thirty points moving from the grammar and meaning dimensions to simplicity. After standardisation, simplicity is the one dimension on which all three systems score below the annotator mean (z between $-0.214$ and $-0.674$), while grammar and meaning remain above it throughout.
+
+The systems produce outputs that are fluent and that retain the meaning of the source sentence, but that are not perceived as easier to read. For Easy-to-Read adaptation this is the dimension that matters most, and it is the one the systems leave unaddressed. The finding also exposes the limit of the automatic metrics reported above: BERTScore sat near 0.915 for every system and could not separate them, yet the human rubric distinguishes a meaning score of 81.6 from a simplicity score of 60.6 within a single system. The quantity the deliverable most needs to improve is precisely the quantity that no reference-based metric in this study could see, which is the central reason a human evaluation was required rather than optional.
+
+On the composite the two 8B conditions are indistinguishable (z 0.123 versus 0.125). The per-dimension differences between the agentic and monolithic conditions, which bear on RQ2, are taken up in Section~\ref{sec:rq2}; the present section reads the three systems descriptively and turns to the scale comparison.
+
+\paragraph{Scale does not buy human-perceived quality.} The within-family scale comparison sets the 70B agentic pipeline against the 8B agentic pipeline on the same sources, paired by source ($n = 27$). The 70B comparator is rated directionally lower on all three raw dimensions (grammaticality 78.4 versus 83.1, meaning 76.4 versus 81.6, simplicity 51.9 versus 60.6) and lower on the composite (z $-0.086$ versus $0.123$). The difference reaches conventional significance on one dimension, simplicity, where the 70B system scores $0.347$ standardised units below the 8B system (Wilcoxon $p = 0.026$, paired $t$ $p = 0.075$); the composite difference is marginal (Wilcoxon $p = 0.066$). Read together with the automatic-metric result above, where scale lifted detection but not replacement, the rubric ratings give a consistent verdict: in this setup, scale did not buy, and on simplicity may have cost, human-perceived quality. The claim is deliberately narrow. It rests on one dimension, one model pair, and twenty raters, and it concerns perceived simplicity rather than replacement quality in general. What it establishes is that the larger model, which detects and delimits idioms more accurately, produced rewrites that annotators found no easier, and on simplicity somewhat harder, to read. Scale improved the part of the task that automatic metrics already captured and did not improve the part that only human judgement could reach.
+
+\paragraph{Annotators supplied their own replacements.} Respondents could add a free-text comment to any item, and did so on 93 rated items. Most of these comments offered the respondent's own replacement rather than only flagging a problem, and those alternatives were consistently shorter than the system outputs. Section~\ref{subsec:rq3-qualitative} examines them in detail; the pattern there, that human readers compress and plain-word the figurative expression where the systems expand it into a gloss, is the qualitative face of the simplicity gap reported above.
+
+\subsection{Free-Text Responses from Annotators}
+\label{subsec:rq3-qualitative}
+
+Each survey item carried an optional free-text box. Annotators used it on 93 rated items, and most of those comments did more than register a complaint: 56 of the 93 proposed a replacement of their own, against 37 that only flagged a problem. The proposed replacements are the more useful half, because they show what a human reader does with the same sentence the system was given. A larger sample of these alternatives is reproduced in Appendix~\ref{appendix:alternatives}.
+
+One pattern is consistent across these suggestions: the human replacement is shorter than the system's, and reads more naturally. For the idiom ``out of control'', the 70B system produced ``the radio crime wave got so \textit{became too chaotic or unmanageable to handle} that'', which both over-explains the phrase and breaks the grammar of the sentence; the annotator simply wrote ``became too chaotic''. For ``all-rounders'', the 8B system wrote ``business people with a wide range of skills and responsibilities'' where the annotator offered ``generally skilled in the business field''. For ``be the role model'', the monolithic system produced ``a person she looked up to as a model, but she never had one like that'' against the annotator's ``looked up to''.
+
+The reason is the same in each case. The systems treat replacement as a substitution at the site of the figurative expression, and they tend to paste in a dictionary-style explanation of its meaning. This keeps the meaning but lengthens the sentence, and now and then, as in the ``out of control'' case, leaves it ungrammatical. A sharper instance is the 70B rendering of ``copy cat'' in ``the SB silhouette brought \textit{copy cat} design language'': the system produced ``the SB silhouette brought \textit{imitate or copy the style of someone or something else} design language'', dropping a verb phrase where a modifier was needed, while the annotator rewrote it as ``matches the style of''. Human readers do not substitute in place; they rewrite the phrase into a short, plain equivalent that fits the sentence.
+
+The 37 comments that only flag a problem are informative too. Some point to sentences the system left unchanged, where its detection step missed the idiom (Section~\ref{subsec:rq2-pipeline-detection}); others object to the length of the system's explanation. Both complaints point the same way.
+
+Taken together, the free-text suggestions name the gap the rubric measures. The systems produce output that keeps the meaning; human readers, given the same sentences, compress and plain-word it. That difference, expansion against compression, is the qualitative face of the simplicity shortfall in Section~\ref{subsec:rq3-human-eval-results}, and it shows where the next gain in Easy-to-Read quality lies: not in finding or preserving meaning, which the systems already do, but in producing a shorter, plainer rewrite.
+\subsection{Qualitative Examples}
+\label{subsec:rq3-examples}
+
+The aggregate scores and the free-text patterns above are clearest on individual items. Three replacements from the survey pool, all produced by the 8B deliverable, span the range the rubric measures: a clean success, the system's typical half-success, and an outright failure. The scores quoted are the per-item raw means across respondents, on the 0--100 scale.
+
+\paragraph{A clean replacement.} For the source ``Many of those who escaped the genocide like her have borne numerous sufferings since, adding to the heavy cross they already have to bear'', the pipeline detected \textit{bear the cross} and produced ``Many of those who escaped the genocide like her have endured or coped with numerous sufferings since, adding to the heavy situation they already have to cope with''. The idiom is gone, the meaning is preserved, and the sentence still reads naturally, including the spread form ``the heavy cross they already have to bear''. Respondents rated it 91 for grammaticality, 88 for meaning preservation, and 95 for simplicity. This is the behaviour the rubric rewards, and it is what the systems achieve when the figurative span is a familiar, self-contained idiom.
+
+\paragraph{Meaning kept, but no simpler.} The more common outcome preserves meaning without making the sentence easier to read. For ``Fox News is no longer the top dog'', the pipeline detected \textit{top dog} and produced ``Fox News is no longer the most powerful or dominant entity''. Nothing is wrong with the rewrite: it is grammatical and faithful, and it scored 98 and 97 on those two dimensions. But it trades a short, vivid two-word idiom for a five-word formal description, so its simplicity fell to 47. This is the expansion pattern of Section~\ref{subsec:rq3-qualitative} in miniature, and it is the single behaviour most responsible for the low simplicity scores across the survey.
+
+\paragraph{An over-explained replacement.} When the idiom's meaning is hard to state briefly, the substituted gloss can run long enough to damage the sentence. For ``Trudeau dismissed decriminalization last year, telling the Canadian Broadcasting Corp it was not a silver bullet'', the pipeline replaced \textit{a silver bullet} with ``a solution that is expected to solve a problem easily, but may not be effective in reality''. The clause is too long for its slot, and its hedged second half clouds the meaning the idiom carried, so the item scored only 51 for grammaticality and 60 for meaning, with simplicity at 24. Failures of this kind are not detection errors (the idiom was found correctly) but transformation errors: the system knows what the phrase means and cannot say it briefly.
+
+Across the pool these three outcomes recur in this order of frequency: faithful clean rewrites and faithful-but-long rewrites are common, while outright damage is rarer. The distribution in Figure~\ref{fig:survey-distributions} is the aggregate of exactly this mix, and it places the remaining work on the transformation step: learning to say briefly what the system already understands.
 
 \newpage

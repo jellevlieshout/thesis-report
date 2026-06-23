@@ -1,4 +1,49 @@
 \section{System Design \& Methodology}
+\label{ch:system-design}
+
+% ============================================================================
+% === WRITING GUIDE: Chapter 3 (~7 pages; ~90% already written) =============
+% ============================================================================
+% JOB: present the artifact as the embodiment of "structure": four LangGraph
+% workflows, the 3-step pipeline (detect -> explain -> transform), structured
+% JSON output, the monolithic baseline as the anti-structure control, and the
+% observability stack. Frame the pipeline-vs-monolithic contrast as a
+% DESIGNED EXPERIMENT, not just engineering.
+% Remaining work: figures F-1 and F-2 (placeholders below), and a short
+% opening paragraph if desired.
+% THEME HOOK: open with "the design hypothesis is that explicit task
+% structure, not model choice, is the controllable variable"; close with "a
+% structured system makes structured claims testable, provided the
+% measurement can see them, which Chapter 4 addresses."
+% NOTE: the single-call structured-output workflows described in 3.2 coexist
+% with the 3-step pipeline (detect / explain / transform as three sequential
+% LLM calls) used in the survey conditions; make sure 3.2 describes BOTH
+% architectures explicitly (the 3-step pipeline is currently implicit).
+% ============================================================================
+
+% --- FIGURE F-1 (replace placeholder): system architecture diagram
+% (FastAPI + LangGraph + Couchbase + vLLM/UPM A100 + LangSmith + React).
+\begin{figure}[h!]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=10mm and 13mm]
+  \node[proc] (react) {React UI\\\footnotesize inspection frontend};
+  \node[proc, right=of react] (api) {FastAPI\\experiment runner};
+  \node[proc, right=of api] (lg) {LangGraph\\workflows (four graphs)};
+  \node[llm, right=of lg] (vllm) {vLLM serving\\\footnotesize Llama-3.1-8B / 3.3-70B\\\footnotesize UPM A100 node};
+  \node[store, below=14mm of api] (cb) {Couchbase\\\footnotesize datasets / runs /\\\footnotesize predictions / evaluations};
+  \node[proc, above=11mm of lg] (ls) {LangSmith\\\footnotesize tracing};
+
+  \draw[flow, {Latex}-{Latex}] (react) -- node[edgelbl]{HTTP} (api);
+  \draw[flow] (api) -- (lg);
+  \draw[flow] (lg) -- node[edgelbl]{LLM calls} (vllm);
+  \draw[flow, {Latex}-{Latex}] (api) -- node[edgelbl]{persist / read} (cb);
+  \draw[trace] (lg) -- node[edgelbl]{traces} (ls);
+\end{tikzpicture}%
+}
+\caption{System architecture. The FastAPI experiment runner drives the four LangGraph workflows, which issue calls to the open-weights models served by vLLM on the UPM A100 node. Datasets, runs, predictions, and evaluations are persisted in Couchbase; every model call is traced to LangSmith (dashed) for the failure analysis in Section~\ref{sec:discussion-observability}; and the React frontend reads runs back for inspection.}
+\label{fig:architecture}
+\end{figure}
 
 \subsection{Problem Formulation}
 
@@ -17,10 +62,10 @@ Two task variants are supported: \textit{detection} (spans, labels, and explanat
 
 The system is implemented as four LangGraph workflows, one per (phenomenon, task) combination:
 \begin{itemize}
-    \item \texttt{metaphor\_detection\_graph} — detects metaphorical words or phrases, following VUAMC MIP (Metaphor Identification Procedure) guidelines;
-    \item \texttt{idiom\_detection\_graph} — detects multi-word idiomatic expressions, following SemEval 2022 Task 2 annotation conventions;
-    \item \texttt{metaphor\_detect\_then\_replace\_graph} — detects metaphors and produces a literal sentence paraphrase;
-    \item \texttt{idiom\_detect\_then\_replace\_graph} — detects idioms and produces a literal sentence paraphrase.
+    \item \texttt{metaphor\_detection\_graph}: detects metaphorical words or phrases, following VUAMC MIP (Metaphor Identification Procedure) guidelines;
+    \item \texttt{idiom\_detection\_graph}: detects multi-word idiomatic expressions, following SemEval 2022 Task 2 annotation conventions;
+    \item \texttt{metaphor\_detect\_then\_replace\_graph}: detects metaphors and produces a literal sentence paraphrase;
+    \item \texttt{idiom\_detect\_then\_replace\_graph}: detects idioms and produces a literal sentence paraphrase.
 \end{itemize}
 
 Each workflow issues a single structured LLM call whose output must conform to the \texttt{TaskOutput} Pydantic schema:
@@ -39,15 +84,69 @@ Two deterministic post-processing steps follow the LLM call:
     \item \textbf{Token label derivation}: a binary label is assigned to each whitespace-delimited token by testing whether any detected span overlaps the token's character range. This produces a label sequence directly comparable to VUAMC's token-level metaphor annotations.
 \end{enumerate}
 
+The workflows above issue a single structured call. The system also implements the same task as an explicit \textit{three-step pipeline}, in which detection, explanation, and transformation are three sequential LLM calls rather than one. The detection step commits to the figurative expressions; the explanation step states, for each expression, its literal meaning; and the transformation step rewrites the sentence using those meanings. Each step's output is kept in the workflow state, so the intermediate results are inspectable on their own rather than collapsed into one opaque response. This pipeline is the agentic condition used in the human evaluation (Section~\ref{subsec:rq3-human-eval}), and its contrast with the monolithic baseline (Section~\ref{sec:baselines}) is the designed experiment behind RQ2. Figure~\ref{fig:pipeline-internals} shows the structure of the pipeline, and Figure~\ref{fig:pipeline-example} traces a real sentence through it.
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=13mm and 34mm]
+  \node[io] (in) {input sentence};
+  \node[llm, below=of in] (det) {Detect};
+  \node[llm, below=of det] (exp) {Explain};
+  \node[llm, below=of exp] (tr) {Transform};
+  \node[io, below=of tr] (out) {literal paraphrase};
+  \draw[flow] (in) -- (det);
+  \draw[flow] (det) -- node[edgelbl,left]{expressions} (exp);
+  \draw[flow] (exp) -- node[edgelbl,left]{expression\,:\,meaning} (tr);
+  \draw[flow] (tr) -- (out);
+  \node[io, right=of det, text width=44mm, font=\scriptsize\sffamily, anchor=west] (schema)
+    {\textbf{TaskOutput} (JSON schema, enforced):\\ is\_figurative,\ figurative\_expressions[],\ explanation};
+  \node[proc, below=8mm of schema, text width=44mm, font=\footnotesize\sffamily] (post)
+    {Span extraction + token labelling\\ \scriptsize(deterministic: string-match $\to$ char offsets $\to$ per-token labels)};
+  \node[io, below=8mm of post, text width=44mm, font=\footnotesize\sffamily] (dm)
+    {detection outputs:\ spans, token labels \scriptsize(scored in RQ1)};
+  \draw[trace] (det.east) -- (schema.west);
+  \draw[flow] (schema) -- (post);
+  \draw[flow] (post) -- (dm);
+  \begin{scope}[on background layer]
+    \node[group, fit=(det)(exp)(tr), label={[grouplabel]above:GraphState (intermediate results flow between steps)}] {};
+  \end{scope}
+\end{tikzpicture}
+\caption{The three-step agentic pipeline as implemented. Detection, explanation, and transformation are three sequential LLM calls in a LangGraph workflow, with intermediate results carried in the graph state. The detection call returns a schema-constrained \texttt{TaskOutput} object (a schema-invalid response triggers an automatic retry); two deterministic post-processing steps then derive the character-offset spans and per-token labels scored in Section~\ref{sec:rq1}. The explanation step produces a literal meaning for each detected expression, and short-circuits to an unchanged sentence when nothing is detected; the transformation step rewrites the sentence using those meanings, and the per-expression explanations are persisted for the H4 analysis (Section~\ref{sec:discussion-h4}).}
+\label{fig:pipeline-internals}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=6mm]
+  \node[io, text width=0.8\textwidth] (in)
+    {\textbf{Input.}~For the book she contributed to, she wrote about being \colorbox{figblue!18}{the role model} she never had.};
+  \node[proc, below=of in] (det) {Detect};
+  \node[io, below=of det, text width=0.8\textwidth] (d1)
+    {\textbf{Detected.}~figurative expression \textit{``be the role model''} (idiom); its character-offset span and per-token labels are derived deterministically.};
+  \node[proc, below=of d1] (exp) {Explain};
+  \node[io, below=of exp, text width=0.8\textwidth] (d2)
+    {\textbf{Explained.}~literal meaning of the expression: \textit{someone she looks up to or aspires to be}.};
+  \node[proc, below=of d2] (tr) {Transform};
+  \node[io, below=of tr, text width=0.8\textwidth] (out)
+    {\textbf{Output.}~For the book she contributed to, she wrote about being \colorbox{figgreen!18}{someone she looks up to or aspires to be}.};
+  \draw[flow] (in) -- (det); \draw[flow] (det) -- (d1);
+  \draw[flow] (d1) -- (exp); \draw[flow] (exp) -- (d2);
+  \draw[flow] (d2) -- (tr); \draw[flow] (tr) -- (out);
+\end{tikzpicture}
+\caption{The three-step agentic pipeline traced on a real example from the survey pool (the 8B agentic system on SemEval source \texttt{src\_02}). Detection commits to the figurative expression as a verbatim span; explanation states its literal meaning; transformation substitutes that meaning back into the sentence. Input and output are shown verbatim; the highlighted phrases mark the replaced expression. The detection output additionally passes through the two deterministic post-processing steps above before evaluation.}
+\label{fig:pipeline-example}
+\end{figure}
+
 \subsection{Infrastructure}
 
 The system is built on the following components:
 \begin{itemize}
     \item \textbf{Backend}: FastAPI (Python 3.13) on port 3030. Experiment runs are launched asynchronously as background tasks, enabling concurrent execution.
-    \item \textbf{LLM access}: OpenRouter API client wrapping LangChain's \texttt{ChatOpenAI}. The primary model used for all experiments reported here is \texttt{google/gemini-3-flash-preview}, selected for its reliable structured-output compliance. Free-tier alternatives (e.g.\ Gemma 3 12B, Mistral Small 24B) are available for exploratory runs.
-    \item \textbf{Persistence}: Couchbase 7.6 document store with four collections: \texttt{datasets} (gold-annotated examples; 16{,}202 VU Amsterdam + 3{,}487 SemEval = 19{,}689 total), \texttt{runs} (experiment metadata and status), \texttt{predictions} (per-example LLM outputs), and \texttt{evaluations} (computed metrics). Document keys follow a namespaced convention (e.g.\ \texttt{prediction::\{run\_id\}::\{example\_id\}}).
-    \item \textbf{Prompt versioning}: each run records the full prompt text and its SHA-256 hash, enabling exact reproducibility and detection of prompt drift between runs.
-    \item \textbf{Observability}: LangSmith tracing is configured for all LLM invocations, providing post-hoc inspection of model inputs, outputs, token usage, and latency per step. Trace analysis is deferred to Chapter~\ref{sec:rq4}.
+    \item \textbf{LLM access}: a provider-dispatched client wrapping LangChain's \texttt{ChatOpenAI}. Model identifiers are routed at runtime: those prefixed with \texttt{vllm:} are served by the open-weights cluster (see below), and unprefixed identifiers pass through to OpenRouter for development-time smoke-testing. All experimental results reported in this thesis are produced by the open-weights cluster; OpenRouter is retained only as a development convenience for system-shakedown runs.
+    \item \textbf{Open-weights serving}: vLLM (continuous batching, PagedAttention) on a UPM A100 GPU node, exposed to the experiment runner via a basic-auth-protected ngrok HTTPS tunnel. Two open-weights models are evaluated: \texttt{meta-llama/\allowbreak Meta-Llama-3.1-8B-\allowbreak Instruct} (FP16, deliverable system) and \texttt{casperhansen/\allowbreak llama-3.3-70b-\allowbreak instruct-awq} (AWQ-quantised, scale-comparator). The same OpenAI-compatible client code path serves both, so the only difference between conditions is the model identifier on the run document.
+    \item \textbf{Persistence}: Couchbase 7.6 document store with four collections: \texttt{datasets} (gold-annotated examples; 16{,}202 VU Amsterdam + 3{,}487 SemEval = 19{,}689 total), \texttt{runs} (experiment metadata and status), \texttt{predictions} (per-example LLM outputs), and \texttt{evaluations} (computed metrics). Document keys follow a namespaced convention (e.g.\ \texttt{prediction::\allowbreak\{run\_id\}::\allowbreak\{example\_id\}}).
+    \item \textbf{Prompt versioning}: each run records the full prompt text and its SHA-256 hash, enabling exact reproducibility and detection of prompt drift between runs. The full text of every prompt (detection, explanation, transformation, and the monolithic baseline) is reproduced in Appendix~\ref{appendix:prompts}.
+    \item \textbf{Observability}: LangSmith tracing is configured for all LLM invocations, providing post-hoc inspection of model inputs, outputs, token usage, and latency per step. Trace analysis is discussed qualitatively in Section~\ref{sec:discussion-observability}.
     \item \textbf{Frontend}: a React/TypeScript single-page application with TanStack Query for data fetching, featuring run dashboards, example-level span visualisation with colour-coded gold/predicted overlays, literal replacement diff views, and multi-run metric comparison charts.
 \end{itemize}
 
@@ -66,12 +165,58 @@ Five evaluation metrics are computed automatically for each completed run:
 All metrics are persisted as \texttt{EvaluationData} Couchbase documents and are re-computable on demand via the \texttt{POST /runs/\{run\_id\}/evaluate} endpoint. Section~\ref{sec:eval-methodology} discusses the appropriateness of these metrics for figurative language evaluation in more detail.
 
 \subsection{Baselines}
+\label{sec:baselines}
 
-% TODO: Implement and evaluate monolithic single-prompt baseline and detection-only baseline for RQ2 ablation study.
+% --- GUIDE (~0.5 pp): the monolithic baseline IS implemented and evaluated
+% (it is survey condition 2 and the RQ2 control). Expand the bullets below
+% into short prose; the key point is that the monolithic condition is the
+% anti-structure control in a designed experiment: same model, same inputs,
+% same temperature, structure removed.
 \begin{itemize}
-    \item \textit{Monolithic single-prompt} (to be implemented): a single prompt that requests detection and replacement without intermediate explanation or structured reasoning.
-    \item \textit{Detection-only comparison}: detect-then-replace runs are compared against detection-only runs on the same examples to quantify the effect of the replacement step on detection quality (see Section~\ref{sec:rq3}).
-    \item \textit{Na\"ive paraphrasing} (to be implemented): a baseline that rewrites the sentence without explicit figurative language handling.
+    \item \textbf{Monolithic single-prompt}: a one-paragraph stub prompt that requests a literal rewrite of the input sentence with free-text output. No detection step, no explicit reasoning step, no structured output schema. This is the RQ2 control condition (Section~\ref{sec:rq2}) and one of the three human-evaluation survey conditions (Section~\ref{subsec:rq3-human-eval}).
+    \item \textbf{Detection-only comparison}: detect-then-replace runs are compared against detection-only runs on the same examples to quantify the effect of the replacement step on detection quality (see Sections~\ref{sec:rq1} and~\ref{sec:rq3}).
 \end{itemize}
+
+% --- FIGURE F-2 (replace placeholder): the visual of the central contrast.
+% Three panels: (a) monolithic single prompt -> free-text rewrite;
+% (b) single-call structured output (detection + replacement in one call);
+% (c) 3-step pipeline: detect -> explain -> transform, each a separate LLM
+% call with inspectable intermediate state.
+\begin{figure}[h!]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=7mm and 8mm]
+  % (a) Monolithic baseline: one unstructured call, free-text out
+  \node[io] (ain) {sentence};
+  \node[mono, right=of ain] (allm) {single prompt};
+  \node[io, right=of allm] (aout) {free-text\\rewrite};
+  \draw[flow] (ain) -- (allm);
+  \draw[flow] (allm) -- (aout);
+  \node[grouplabel, anchor=south west] at ([yshift=2mm]ain.north west) {(a) Monolithic baseline};
+
+  % (b) Single structured call: detection + replacement committed together
+  \node[io, below=12mm of ain] (bin) {sentence};
+  \node[llm, right=of bin] (bllm) {single call\\(structured output)};
+  \node[io, right=of bllm] (bout) {spans + paraphrase\\(JSON schema)};
+  \draw[flow] (bin) -- (bllm);
+  \draw[flow] (bllm) -- (bout);
+  \node[grouplabel, anchor=south west] at ([yshift=2mm]bin.north west) {(b) Single-call structured output};
+
+  % (c) 3-step agentic pipeline: inspectable intermediate state
+  \node[io, below=12mm of bin] (cin) {sentence};
+  \node[proc, right=of cin] (cdet) {Detect};
+  \node[proc, right=of cdet] (cexp) {Explain};
+  \node[proc, right=of cexp] (ctr) {Transform};
+  \node[io, right=of ctr] (cout) {literal\\paraphrase};
+  \draw[flow] (cin) -- (cdet);
+  \draw[flow] (cdet) -- (cexp);
+  \draw[flow] (cexp) -- (ctr);
+  \draw[flow] (ctr) -- (cout);
+  \node[grouplabel, anchor=south west] at ([yshift=2mm]cin.north west) {(c) Three-step agentic pipeline};
+\end{tikzpicture}%
+}
+\caption{The three system architectures compared in this thesis. The monolithic baseline (a) produces only a free-text rewrite; the single-call structured-output workflow (b) commits to detected spans alongside the paraphrase in one call; the three-step agentic pipeline (c) separates detection, explanation, and transformation into sequential steps with inspectable intermediate state. Structure increases from (a) to (c); the comparison between them is the designed experiment behind RQ2.}
+\label{fig:architectures-contrast}
+\end{figure}
 
 \newpage

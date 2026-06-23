@@ -59,6 +59,14 @@
 \usepackage{siunitx}            % For SI units
 \usepackage{graphicx}           % To include graphics
 \usepackage[dvipsnames]{xcolor} % To configure colors
+\usepackage{tikz}               % Vector diagrams (architecture, pipeline, flows)
+\usetikzlibrary{arrows.meta, positioning, fit, backgrounds, calc, shapes.geometric}
+\input{includes/figstyles}      % Shared diagram palette and node/arrow styles
+\usepackage{listings}           % Verbatim system-prompt listings (appendix)
+\lstset{basicstyle=\footnotesize\ttfamily, breaklines=true, breakatwhitespace=true,
+        columns=fullflexible, frame=single, framesep=4pt, xleftmargin=2pt,
+        aboveskip=6pt, belowskip=6pt}
+\usepackage{longtable}          % Multi-page data tables (appendix)
 \usepackage[numbers]{natbib}    % Better bibliography management
 \usepackage{bibentry}           % To display bibliography entries inline
 \usepackage{fancyhdr}           % To configure the header and footer
@@ -106,8 +114,8 @@
 }
 
 % Set the date format
-\date { 
-    Madrid, MM YYYY
+\date {
+    Madrid, July 2026
 }
 
 % A macro to print the title
@@ -141,6 +149,8 @@
 \clearpage
 \input{includes/acknowledgement}
 \clearpage
+\input{includes/ai-disclaimer}
+\clearpage
 \input{includes/index}
 \clearpage
 \input{includes/index_tables}
@@ -148,6 +158,8 @@
 \input{includes/index_figures}
 \clearpage
 \input{includes/index_equations}
+\clearpage
+\input{includes/glossary}
 \pagenumbering{arabic}  % Switch to arabic numbers for main content
 \setcounter{page}{1}    % Reset page counter
 \clearpage
@@ -157,13 +169,13 @@
 \clearpage
 \input{includes/system_design}
 \clearpage
+\input{includes/methodology}
+\clearpage
 \input{includes/rq1_detection}
 \clearpage
 \input{includes/rq2_decomposition}
 \clearpage
 \input{includes/rq3_replacement}
-\clearpage
-\input{includes/rq4_observability}
 \clearpage
 \input{includes/discussion}
 \clearpage

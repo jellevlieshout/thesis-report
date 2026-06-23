@@ -69,14 +69,28 @@
   doi       = {10.18653/v1/S16-2003}
 }
 
-@article{sample2024,
-  author  = {Author, A.},
-  title   = {Sample Article Title},
-  journal = {Journal Name},
-  year    = {2024},
-  volume  = {1},
-  number  = {1},
-  pages   = {1--10}
+% Williams test for dependent correlations (cited in methodology.tex §reliability-bound).
+% Original 1959 stats text; the test is now standard but the canonical citation is the book.
+@book{williams1959regression,
+  author    = {Williams, Evan James},
+  title     = {Regression Analysis},
+  publisher = {Wiley},
+  address   = {New York},
+  year      = {1959}
+}
+
+% Graham et al. 2016a: cited in Graham 2017 §3.3 as the empirical refutation of reference bias
+% in DA adequacy. Best candidate is the COLING 2016 paper on MT QE gold-standard evaluation;
+% TODO: confirm against Graham 2017's bibliography on next library access and update if needed.
+@inproceedings{Graham2016a,
+  author    = {Graham, Yvette and Baldwin, Timothy and Mathur, Nitika},
+  title     = {Accurate Evaluation of Segment-level Machine Translation Metrics},
+  booktitle = {Proceedings of the 2015 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+  year      = {2015},
+  pages     = {1183--1191},
+  publisher = {Association for Computational Linguistics},
+  doi       = {10.3115/v1/N15-1124},
+  note      = {Cited as ``Graham et al.\ 2016a'' in Graham et al.\ 2017}
 }
 
 # VU Amsterdam Metaphor Corpus
@@ -115,4 +129,54 @@
   doi       = {10.18653/v1/2022.semeval-1.13},
   pages     = {107--121},
   abstract  = {This paper presents the shared task on Multilingual Idiomaticity Detection and Sentence Embedding, which consists of two subtasks: (a) a binary classification task aimed at identifying whether a sentence contains an idiomatic expression, and (b) a task based on semantic text similarity which requires the model to adequately represent potentially idiomatic expressions in context. Each subtask includes different settings regarding the amount of training data. Besides the task description, this paper introduces the datasets in English, Portuguese, and Galician and their annotation procedure, the evaluation metrics, and a summary of the participant systems and their results. The task had close to 100 registered participants organised into twenty five teams making over 650 and 150 submissions in the practice and evaluation phases respectively.}
+}
+@inproceedings{graham-2015-improving,
+    title = "Improving Evaluation of Machine Translation Quality Estimation",
+    author = "Graham, Yvette",
+    editor = "Zong, Chengqing  and
+      Strube, Michael",
+    booktitle = "Proceedings of the 53rd Annual Meeting of the Association for Computational Linguistics and the 7th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)",
+    month = jul,
+    year = "2015",
+    address = "Beijing, China",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/P15-1174/",
+    doi = "10.3115/v1/P15-1174",
+    pages = "1804--1813"
+}
+
+@inproceedings{Brown2020,
+  title     = {Language Models are Few-Shot Learners},
+  author    = {Brown, Tom B. and Mann, Benjamin and Ryder, Nick and Subbiah, Melanie and Kaplan, Jared and Dhariwal, Prafulla and Neelakantan, Arvind and others},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {33},
+  year      = {2020},
+  url       = {https://arxiv.org/abs/2005.14165}
+}
+
+@inproceedings{Wei2022,
+  title     = {Chain-of-Thought Prompting Elicits Reasoning in Large Language Models},
+  author    = {Wei, Jason and Wang, Xuezhi and Schuurmans, Dale and Bosma, Maarten and Ichter, Brian and Xia, Fei and Chi, Ed H. and Le, Quoc V. and Zhou, Denny},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2022},
+  url       = {https://arxiv.org/abs/2201.11903}
+}
+
+@misc{InclusionEurope2009,
+  author       = {{Inclusion Europe}},
+  title        = {{Information for All: European Standards for Making Information Easy to Read and Understand}},
+  year         = {2009},
+  howpublished = {Inclusion Europe, Brussels},
+  note         = {Produced in the framework of the project ``Pathways to Adult Education for People with Intellectual Disabilities''. ISBN 2-87460-110-1},
+  url          = {https://www.inclusion-europe.eu/easy-to-read/}
+}
+
+@techreport{UNE2018,
+  author      = {{Asociación Española de Normalización}},
+  title       = {{Lectura Fácil: Pautas y Recomendaciones para la Elaboración de Documentos}},
+  institution = {UNE},
+  type        = {Spanish technical standard},
+  number      = {UNE 153101:2018 EX},
+  year        = {2018},
+  url         = {https://revista.une.org/4/primera-norma-tecnica-sobre-lectura-facil.html}
 }

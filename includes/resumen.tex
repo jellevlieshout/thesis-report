@@ -3,7 +3,11 @@
 \begin{center}
     \section*{Resumen}
 
-    ...
+    El lenguaje figurado, como los modismos y las metáforas, constituye una barrera para la accesibilidad de los textos. Las pautas de Lectura Fácil, dirigidas a personas con discapacidad intelectual, baja alfabetización o competencia lingüística limitada, indican que debe evitarse el lenguaje figurado, pero no ofrecen un método para reescribirlo. Esta tesis estudia si los grandes modelos de lenguaje pueden cubrir esa carencia, detectando expresiones figuradas y reescribiéndolas en un inglés literal, que preserve el significado y resulte más fácil de leer, sin entrenamiento específico para la tarea.
+
+    Se desarrolla una arquitectura agéntica que descompone la tarea en tres pasos explícitos e inspeccionables (detección, explicación y transformación) y se compara con una línea base monolítica de un solo prompt. Ambas se ejecutan sobre modelos de pesos abiertos en dos escalas, un modelo de 8B como sistema final y uno de 70B como comparador, y se evalúan sobre los modismos de la tarea SemEval-2022 Task 2 y las metáforas del VU Amsterdam Metaphor Corpus, mediante métricas automáticas de detección y una encuesta de evaluación humana de tipo Direct Assessment para la calidad de la sustitución.
+
+    El hallazgo central es que la calidad fiable proviene de la estructura explícita de la tarea, y no de la escala del modelo ni de la formulación del prompt. La escala mejora la detección, pero no la calidad de la sustitución percibida por las personas: en esta configuración, la escala no aportó, y en simplicidad pudo incluso restar, calidad percibida por las personas. Las mejoras derivadas de la formulación del prompt no se transfieren entre escalas de modelo y pueden invertir su signo. La descomposición ofrece una ventaja direccional y consistente en la preservación del significado que se aproxima al umbral convencional de significación sin alcanzarlo, con una puntuación compuesta empatada, mientras que su beneficio más claro es que cada fallo puede atribuirse a un paso concreto. En todos los sistemas las sustituciones preservan el significado pero no simplifican, lo que señala el principal reto pendiente para la adaptación a Lectura Fácil y muestra que la estructura explícita, junto con una evaluación anclada en el juicio humano, es la palanca fiable en esta tarea.
 
 \end{center}
 

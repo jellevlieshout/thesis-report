@@ -1,13 +1,211 @@
 \section{Discussion \& Limitations}
+\label{ch:discussion}
+
+% ============================================================================
+% === WRITING GUIDE: Chapter 8 (~6 pages) ===================================
+% ============================================================================
+% JOB: assemble the four model-dependence findings into the
+% structure-over-scale synthesis (8.1), explain where metaphors resist
+% literalisation (8.2), absorb the dissolved RQ4 as a qualitative
+% observability section (8.3), bound every claim (8.4), state H4 as untested
+% with a proposed design (8.5), and collect future work (8.6).
+% This is where the central theme is argued in full AND where its honesty is
+% defended. Write 8.1 immediately after the survey-results sections land.
+% THEME HOOK: open 8.1 with "four independent findings, one pattern"; close
+% the chapter with: "structure over scale is not a claim that decomposition
+% always wins; it is the claim that structure is the only lever whose
+% behaviour this thesis could observe, attribute, and trust."
+% ============================================================================
+
+\subsection{Synthesis: Structure over Scale}
+\label{sec:discussion-synthesis}
+
+% --- GUIDE (~1.5 pp, ~800 words; the keystone of the thesis). Build the
+% prose around Table~\ref{tab:model-dependence} below. The four findings:
+%  (i)   v2 chain-of-thought: +11pp BLEU on Gemini Flash, no-op on
+%        Llama-3.1-8B. Prompt gains do not transfer across models.
+%  (ii)  Schema-commitment detection lift inverts at scale: +12/+22pp at 8B
+%        vs -28/-5pp at 70B. Same prompt, same data, opposite sign.
+%  (iii) Pipeline detection is identical to detection-only in all four
+%        model x dataset cells (summary; detail in
+%        Section~\ref{subsec:rq2-pipeline-detection}). Structure's value is
+%        not detection sharpness.
+%  (iv)  Scale does not buy human-perceived replacement quality; the 70B is
+%        rated significantly worse on simplicity (Wilcoxon p=0.026).
+% The argument to make EXPLICITLY (this is the move that keeps the theme
+% honest, since (ii) is itself a structure effect with a negative sign):
+% scale and prompts are UNRELIABLE levers: their gains invert across
+% conditions and automatic metrics cannot even see the dimension that
+% matters. Structure is the lever whose effects are INSPECTABLE and
+% ATTRIBUTABLE: the inversions in (i)-(iii) were only discoverable because
+% explicit decomposition isolated the conditions, and structure's benefit
+% lands on meaning preservation (suggestive, Section
+% ~\ref{subsec:rq2-human-eval-results}) with every failure traceable to a
+% step (8.3). Scope the claim: "decomposition helps where the task is
+% generative and underdetermined (replacement), not where it is
+% discriminative (detection)."
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{3.4cm}p{2.7cm}p{2.7cm}p{4.0cm}}
+\hline
+\textbf{Finding} & \textbf{At 8B} & \textbf{At 70B} & \textbf{What it shows} \\
+\hline
+(i) Adding a forced replacement field to the detection prompt & $+10$ / $+25$pp sentence F1 (VU / SemEval) & $-11$ / $-3$pp & the same prompt change helps the small model and hurts the large one \\
+(ii) Pipeline detection vs.\ detection alone & identical (3 decimals) & identical (3 decimals) & splitting the task into steps does not change detection \\
+(iii) Human-rated replacement quality & 8B agentic composite $z = 0.123$ & 70B agentic $z = -0.086$; simplicity $p = 0.026$ & a larger model is rated no better, and worse on simplicity \\
+\hline
+\end{tabular}
+\caption{The three findings. Each is an effect that common practice would expect to hold across models, and does not. Together they motivate the central claim that explicit task structure is the reliable lever in this task, and that human evaluation is what makes its effect visible.}
+\label{tab:model-dependence}
+\end{table}
+
+This thesis asked where reliable quality comes from when large language models rewrite figurative language into Easy-to-Read English. Common practice expects two things to drive the gains: a larger model and a better prompt. Table~\ref{tab:model-dependence} collects three results that go against this. Each is an effect that practice would expect to hold across models, and none of them does.
+
+The first concerns the prompt. Adding a forced replacement field to the detection prompt raises detection on the 8B model, by ten to twenty-five points, but lowers it on the 70B model, by three to eleven points, with the same prompt and the same data (finding i). The same change helps the small model and hurts the large one. The second concerns task structure read narrowly: the three-step pipeline detects as well as a plain detection prompt, matching it to within rounding on every model and dataset (finding ii). Splitting the task into steps does not make detection sharper. The third concerns scale: the 70B model, which finds and marks idioms more accurately, is rated no better overall by human readers and worse on simplicity (Wilcoxon $p = 0.026$). In this setup, scale did not buy, and on simplicity may have cost, human-perceived quality (finding iii).
+
+These three results are connected. They show that model size and prompt wording are unreliable levers in this task: their effects do not just vary in size, they can reverse from one model to the next, and the automatic metrics that might catch the reversal cannot see replacement quality at all (Section~\ref{sec:rq2}). Someone who tunes a prompt on one model, or who assumes a larger model is a better one, is trusting a signal that can flip on the system they actually ship.
+
+Explicit task structure behaves differently, and that is the claim of this thesis: structure is the lever that can be relied on, not the lever that always wins. Two things follow from breaking the task into visible steps. First, the decomposition is what made the results above measurable at all. The reversal in finding (i) and the equal detection scores in finding (ii) are statements about one specific step, and only a system that exposes its steps can report them. Second, where structure helps, the help can be traced: its benefit shows up on the replacement side, as a consistent directional advantage on meaning preservation (+0.31 standardised units, p = 0.06-0.08) that approaches but does not reach conventional significance (Section~\ref{subsec:rq2-human-eval-results}), and every failure can be tied to a named step rather than to one opaque rewrite (Section~\ref{sec:discussion-observability}). Human evaluation is not itself a lever on quality; it is how that quality is made visible, because no automatic metric in this study could see it.
+
+The limits of the claim are worth stating plainly. Decomposition helps where the task is open-ended, which is rewriting a figurative expression into a literal one, and not where it is a yes-or-no decision, which is detection: finding (ii) shows this directly, and the overall human rating of the agentic and monolithic systems is tied (z 0.123 vs.\ 0.125), so structure is not a free win on every measure. What the three findings support together is narrower, and more useful for a real system, than a leaderboard score. In this task the gains people expect from scale and from prompt wording are model-dependent and can reverse, while explicit task structure is the lever whose effects are visible, traceable, and aimed at the dimension Easy-to-Read adaptation can least afford to lose. That is what structure over scale means here: not that structure always wins, but that it is the lever that can be trusted to mean what it says.
+
+\subsection{Why the Replacements Preserve Meaning but Do Not Simplify}
+
+The headline survey result, that every system scores high on meaning preservation but low on simplicity (Section~\ref{subsec:rq3-human-eval-results}), has a consistent mechanism behind it, visible in the free-text alternatives respondents supplied (Section~\ref{subsec:rq3-qualitative}). When the systems literalise a figurative expression, they tend to substitute a \textit{definition} of it: a clause that spells the meaning out, faithful but longer than the original. ``All-rounders'' becomes ``business people with a wide range of skills and responsibilities''; the 70B renders ``poison pill'' as ``a financial strategy to prevent a hostile takeover by making the company less attractive to potential buyers''. The meaning is carried over, which the rubric rewards, but the sentence has grown and its register has not become plainer, which the simplicity axis penalises. Human readers, given the same sentences, do the opposite: they \textit{compress}, reaching for a short, plain near-synonym (a respondent rewrote ``all-rounders'' simply as ``generally skilled in the business field'') rather than a gloss.
+
+The gap the survey measures is therefore expansion against compression. It is not that the systems fail to understand the expression, their meaning scores show that they do, but that literalisation-by-definition is the wrong operation for Easy-to-Read, whose goal is brevity and plainness rather than a fuller restatement. This is why simplicity, and not meaning, is the dimension on which the deliverable falls short, and it is part of the reason a larger model does not help: a 70B writes longer, more careful definitions, which raise faithfulness while leaving, or worsening, the readability the task is about. The clearest direction for future work follows directly (Section~\ref{sec:future-work}): a transformation step optimised for plainness, scored against a simplicity objective, rather than one optimised only to preserve meaning.
+
+\subsection{Why Metaphors Resist Literal Replacement}
+
+% --- GUIDE (~1 pp, ~500 words). The H3 evidence read conceptually:
+%  (1) Idioms have constrained, conventionalised meanings that map cleanly
+%      to literal paraphrases; SemEval can ship gold paraphrases at all
+%      because that mapping exists.
+%  (2) Metaphors, particularly novel/conceptual ones with abstract
+%      source-target mappings, often encode information no single literal
+%      restatement preserves. The VUAMC's LACK of gold paraphrases is not an
+%      oversight but a symptom: the mapping is underdetermined.
+%  (3) Connect to \cite{Neidlein2020} conventionality stratification:
+%      conventionalised metaphors behave like vocabulary (often need no
+%      rewrite for E2R); novel metaphors are where both detection and
+%      replacement degrade.
+%  (4) Practical consequence: the survey's idiom-only scope (Ch 4) and the
+%      metaphor-track evaluation via detection metrics only; a metaphor
+%      human-eval needs a different instrument (future work 8.6).
+
+The synthesis above located structure's benefit on the replacement side of the task. That benefit is in turn bounded by the linguistic material itself, which is where this section turns. Hypothesis H3 held that idioms are more tractable than metaphors for figurative-to-literal replacement, and the evidence of Chapter~\ref{sec:rq3} supports this indirectly: the idiom track can be scored against literal-paraphrase references at all, whereas the metaphor track has no measurable replacement metric, and that absence is itself the symptom. The deeper reason is linguistic rather than architectural. An idiom is a conventionalised expression whose figurative meaning is fixed by usage: ``spill the beans'' means reveal a secret, and that mapping is stable across contexts. Because the target meaning is determined, a literal paraphrase exists and can be written down, which is why the SemEval idiom data can supply reference paraphrases for a subset of items at all.
+
+Metaphor is different in kind. A conceptual or novel metaphor maps a source domain onto a target in a way that can carry information no single literal sentence preserves; the figurative phrasing does work that paraphrase discards. This shows up in the data as an absence. The VU Amsterdam Metaphor Corpus (VUAMC)~\cite{vuamsterdammetaphorcorpus} annotates metaphor at the token level, following the MIPVU procedure~\cite{mipvu}, but supplies no gold literal paraphrase, and that gap is not an oversight: there is often no single literal restatement to annotate, because the mapping from a metaphor to what it ``literally means'' is underdetermined.
+
+The dependence runs along conventionality. Neidlein et al.~\cite{Neidlein2020} show that pre-LLM metaphor-recognition systems earn most of their headline F1 on conventionalised metaphors and frequent word types, and degrade sharply on unconventional metaphors and rare words, so that much of the apparent competence is conventionalised word-sense disambiguation rather than metaphor modelling. Read for the replacement task, this stratifies the problem. A conventionalised metaphor behaves like ordinary vocabulary: its figurative sense is already part of everyday language, so it tends to be detected well and often needs no rewrite for a reader who already knows the sense. A novel metaphor is where both steps degrade at once: it is harder to detect, and there may be no literal target to rewrite it into.
+
+Two consequences follow for this thesis. First, the human-evaluation survey covers idioms only (Chapter~\ref{ch:methodology}). This followed from the data rather than from a free choice: the VUAMC provides no gold paraphrases to evaluate against, and the meaning-preservation rating only makes sense when there is a recoverable meaning to preserve, which idioms have and many metaphors do not. Second, the metaphor track is therefore evaluated through detection metrics alone, and a faithful metaphor-replacement evaluation would need a different instrument, one that does not assume a single gold paraphrase and that can score a rewrite against a space of acceptable readings. That instrument is left to future work.
+
+\subsection{Observability and Error Analysis}
+\label{sec:discussion-observability}
+
+% --- GUIDE (~1 pp, ~500 words): absorbs the dissolved RQ4 chapter;
+% explicitly framed as QUALITATIVE (observability was dropped as a top-level
+% RQ; no formal observability metric was evaluated; say so in the first
+% paragraph).
+% Must land:
+%  (1) The failure-traceability argument (from Section 6.5): the structured
+%      output records detected expression, explanation, and replacement;
+%      failures localise to a step. Monolithic errors are just "the rewrite
+%      is wrong."
+%  (2) 1-2 LangSmith trace case studies. Strong candidate: src_05 "poison
+%      pill": the pipeline trace shows detection returned no spans, so the
+%      transform step short-circuited and returned the input unchanged; the
+%      error is attributable to pipeline.detect specifically, and the fix
+%      target (the detection prompt) is identified without touching the
+%      transform step. Contrast: the same failure in the monolithic
+%      condition is indistinguishable from a model choosing not to rewrite.
+%  (3) The methodological payoff, tying back to 8.1: findings (i)-(iii)
+%      were only measurable because decomposition exposed intermediate
+%      state; observability is what made the negative results precise.
+
+Observability began as a fourth research question and is treated here as a qualitative discussion rather than a measured result: no formal observability metric was defined or evaluated. The argument is nonetheless tied to the central one, because the inspectability that decomposition provides is what made the preceding results possible to state at all.
+
+The agentic pipeline records its intermediate state. Each run stores the detected expression, the explanation of its meaning, and the produced replacement as separate fields, so a failure localises to a step: a missed expression is a detection error, while a correct detection followed by a meaning-distorting rewrite is a transformation error, and the two are distinguishable in the trace. The monolithic condition offers no such resolution. Its output is a single free-text string, so an error is only ever ``the rewrite is wrong'', with no internal state to say why.
+
+A concrete case makes the difference visible. On the source ``Cubic announced a poison pill, for one year, allowing investors taking stakes above this threshold to be diluted'', the 8B pipeline returned the sentence unchanged. The trace shows why: the detection step produced no span, so the transform step short-circuited and passed the input through untouched. The failure is attributable to a single component, the detection prompt, and a fix can target it without disturbing the transform step that was never reached. The unchanged output also exposes a measurement trap. A sentence returned verbatim is, by construction, fluent and faithful to the source, so it scores well on grammaticality and meaning preservation while having performed none of the task; only the simplicity dimension registers the non-event. The same outcome from the monolithic system would be opaque: when a single-prompt model returns its input unchanged, there is no way to tell whether it failed to recognise the idiom or judged that no change was needed. On this particular item the monolithic system happened to rewrite ``poison pill'' as ``defensive measure'' and the 70B pipeline detected and rewrote it, so decomposition bought no advantage in output here; what it bought was a diagnosis. Only the pipeline conditions can report, for any given item, which step made the decision. Figure~\ref{fig:poison-pill} shows the three behaviours side by side.
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[node distance=6mm and 9mm]
+  \node[io, text width=0.82\textwidth] (in)
+    {\textbf{Input.}~Cubic announced a \colorbox{figorange!22}{poison pill}, for one year, allowing investors taking stakes above this threshold to be diluted.};
+  \node[proc, draw=figorange, fill=figorange!10, below=8mm of in.south, anchor=north, text width=38mm] (da) {Detect: \textbf{no span found}};
+  \node[group, below=7mm of da, text width=38mm, minimum height=9mm, align=center, text=figslate] (db) {no separable\\detection step};
+  \node[proc, below=7mm of db, text width=38mm] (dc) {Detect: \textit{``poison pill''}};
+  \node[left=9mm of da, text=figslate, font=\footnotesize\sffamily\bfseries, align=right] (la) {8B agentic\\\footnotesize(pipeline)};
+  \node[left=9mm of db, text=figslate, font=\footnotesize\sffamily\bfseries, align=right] (lb) {8B monolithic};
+  \node[left=9mm of dc, text=figslate, font=\footnotesize\sffamily\bfseries, align=right] (lc) {70B agentic\\\footnotesize(pipeline)};
+  \node[io, right=9mm of da, text width=52mm] (oa) {``poison pill'' left \emph{unchanged} (no-op)};
+  \node[io, right=9mm of db, text width=52mm] (ob) {``poison pill'' $\to$ ``a defensive measure''};
+  \node[io, right=9mm of dc, text width=52mm] (oc) {``poison pill'' $\to$ ``a financial strategy to prevent a hostile takeover''};
+  \draw[flow] (da) -- (oa);
+  \draw[flow] (db) -- (ob);
+  \draw[flow] (dc) -- (oc);
+\end{tikzpicture}
+\caption{The same input under the three systems. The pipeline conditions (8B and 70B agentic) expose a detection step whose result is inspectable: the 8B pipeline records that no span was found and so returns the sentence unchanged (a diagnosable no-op), while the 70B pipeline detects the idiom and rewrites it. The monolithic system has no separable detection step (dashed), so although it happens to rewrite the expression, there is no internal state to say whether it recognised the idiom or merely chose to reword. Structure does not guarantee a better output here, but it makes the behaviour attributable to a step.}
+\label{fig:poison-pill}
+\end{figure}
+
+This is the methodological payoff of structure, and it underwrites the synthesis of Section~\ref{sec:discussion-synthesis}. Two of the three findings, the prompt-change reversal (finding i) and the equal detection scores (finding ii, Section~\ref{subsec:rq2-pipeline-detection}), are statements about the detection step in particular, which the decomposition makes a separate part that can be measured on its own; a single-output system gives no such step to measure or report against. Observability is therefore not a benefit running alongside the quality results, but the property that let those results be pinned to a component at all.
+
+\subsection{Limitations}
+
+\paragraph{Conceptual limits.} Metaphors encoding meaning that cannot be fully literalised; replacement oversimplifying nuance. The choice to scope the human-evaluation survey to idioms only (Section~\ref{sec:eval-methodology}) reflects this limit pragmatically: the rubric triad of grammaticality, meaning preservation, and simplicity is well-defined for the figurative-to-literal mapping in the SemEval idiom set, but breaks down for conventional metaphors that may not require any rewrite at all.
+
+\paragraph{Evaluation limits.} The subjectivity of human evaluation, mitigated by per-annotator z-score standardisation~\cite{Graham2013} and the assessor-intrinsic QC techniques of bad-references and repeat-pairs~\cite{Graham2017}, remains an inherent property of the task. There is no single ground-truth literal paraphrase for any given idiom, and BLEU's structural misalignment with the task (Section~\ref{sec:rq3}) means the survey's ratings across the three rubric dimensions (grammaticality, meaning preservation, simplicity) are the load-bearing evidence for replacement quality. The respondent pool (22 collected, 20 retained after quality control), while sized for $\geq 3$ ratings on 71 of the 81 items, is at the lower end of what Graham 2013 found stable for per-annotator standardisation; this is documented as a deliberate departure in Section~\ref{sec:eval-methodology}. Three of the twenty retained respondents are long-term residents of English-speaking countries rather than native speakers.
+
+\paragraph{Model dependence.} \emph{Findings observed under one model do not necessarily transfer to another, and may invert.} Two instances of this appear in the thesis, in increasing order of severity:
+
+\textit{(1) The detect-then-replace detection lift inverts with scale, on both phenomena.} On Llama-3.1-8B-Instruct, the dtr prompt's structured-output schema gives a $+10$pp sentence-F1 lift over the model's own detection-only baseline on VU metaphor (0.254 $\to$ 0.352) and a $+25$pp lift on SemEval idiom (0.333 $\to$ 0.584): the auxiliary-replacement field forces the model to commit detected spans alongside a paraphrase, scaffolding detection at small scale. On Llama-3.3-70B-Instruct-AWQ, the same prompt gives an $11$pp sentence-F1 \textit{loss} from detection-only on VU metaphor (0.302 $\to$ 0.190) and a $3$pp loss on SemEval idiom (0.529 $\to$ 0.496). Both datasets, same direction, same prompt, no other change in conditions: $+10$ to $+25$pp at 8B, $-3$ to $-11$pp at 70B. The mechanism is consistent across phenomena: the schema constraint scaffolds the under-specified 8B, but on the better-calibrated 70B it forces over-commitment to ``no figurative content'' on borderline items, so the larger model becomes more selective (its token precision climbs) at the cost of recall and ends up worse overall.
+
+\textit{(2) Pipeline detection is architecture-invariant.} As reported in Section~\ref{subsec:rq2-pipeline-detection}, the 3-step pipeline's detection step scores within rounding of the standalone detection prompt across models and datasets (the small residual differences trace to differing structured-output failure sets, not to the detection step itself). This pins the detection lift, and its inversion in (1), to the structured-output schema's commitment mechanism rather than to chain-of-thought content, and implies that whatever the pipeline architecture buys is in the replacement step's quality, not in detection sharpness.
+
+These two findings cohere into a single methodological claim: \emph{a prompt or design choice validated on one model can fail, or reverse, on another, so a result obtained on a small open-weights model gives an unreliable read on what helps the same family at a larger scale.} The risk of taking such a result at face value is shipping a system whose design choices were tuned to one model's failure modes and do not help, or actively hurt, at the scale actually deployed. Tian~2024 (TSI), Gao~2025 (PASS), and Badran~2025 (the sequential SemEval Task~1A pipeline) all report architectural wins on larger backbones; the thesis's pipeline comparison is a partial re-validation on an open-weights deliverable, and finds the wins preserved on the detection-replacement split but \textit{not} as detection improvements at scale.
+
+\paragraph{Scale dependence (within family).} The within-family comparison (Llama-3.1-8B vs.\ Llama-3.3-70B-Instruct-AWQ) shows that scale helps detection unevenly and does not help replacement at all. On the full evaluation sets, the larger model lifts idiom detection substantially (sentence F1 0.333 $\to$ 0.529, $+19.6$pp) but metaphor detection only marginally (0.254 $\to$ 0.302, $+4.8$pp; Section~\ref{sec:rq1}). The asymmetry has a clear cause. Metaphor detection is scored against MIPVU's exhaustive token-level gold, and the 70B's gain there is almost entirely in precision (token precision 0.238 $\to$ 0.355) with recall nearly flat (0.183 $\to$ 0.212), so the larger model is more selective about the metaphors it flags without marking many more of the conventional ones the gold counts; idiom detection, which targets a single discrete expression, is where scale genuinely pays. The 27-source survey pool shows the same direction for idioms, recomputed from the rated pipeline outputs: the 70B detects a figurative expression in 24 of 27 sources against the 8B's 21 and localises spans more accurately (span F1 0.350 to 0.638). Replacement quality, by contrast, does not improve with scale: reference-based metrics are not well defined for this task (Section~\ref{sec:rq2}), and the human evaluation rates the 70B directionally lower on every rubric dimension and significantly lower on simplicity (Wilcoxon $p=0.026$; Section~\ref{subsec:rq3-human-eval-results}). In this setup, scale did not buy, and on simplicity may have cost, human-perceived quality. The 70B comparator is therefore most defensible as a detection-side ceiling for idioms rather than a replacement-side competitor. One caveat bounds even that reading: the 70B comparator (Llama-3.3) is a later model generation than the 8B (Llama-3.1), so this comparison conflates scale with a generation improvement and its detection gap is an upper bound on the effect of size alone.
+
+\paragraph{Scope limits.} Sentence- and MWE-level focus throughout; no discourse-wide figurative-language tracking; primarily English (the FACILE umbrella's Spanish work~\cite{Surez-Figueroa2024} is the natural extension target). The replacement evaluation covers idioms only; metaphor replacement is assessed through detection-side metrics on detect-then-replace runs, not through human-rated rubric scoring.
+
+\subsection{Hypothesis H4: Untested}
+\label{sec:discussion-h4}
+
+% --- GUIDE (~0.5 pp, ~250 words). H4: explicit intermediate explanations
+% correlate positively with the semantic correctness of the final
+% replacement. State plainly:
+%  (1) H4 was NOT tested in this thesis. Reason: testing it requires an
+%      explanation-quality score, and no such instrument was built; the
+%      survey rates the final replacement, not the intermediate explanation.
+%  (2) The raw material exists: every agentic run persists the explanation
+%      alongside detection and replacement (structured output), and the 81
+%      survey items have human meaning-preservation ratings.
+%  (3) Proposed design (future work): rate explanation quality independently
+%      (second DA-style pass or LLM-as-judge with human spot-validation),
+%      then correlate per-item explanation scores with the survey's meaning
+%      scores. Power analysis on n=27 sources first; the small pool is why
+%      this was not bolted on post-hoc.
+
+Beyond the bounded claims above, one hypothesis was set aside entirely. Hypothesis H4 held that \textit{explicit intermediate explanations generated by the agent correlate positively with the semantic correctness of the final literal replacement}. It was not tested in this thesis, and the reason is stated plainly rather than left implicit. Testing the hypothesis means operationalising it as a correlation between the \textit{quality} of each explanation and the correctness of the replacement it produced, which requires a score for explanation quality, and no such instrument was built: the survey rates the final replacement on grammaticality, meaning preservation, and simplicity, but never the explanation that produced it. Reporting a correlation without an explanation-quality measure would be a claim without evidence.
+
+The raw material for the test nonetheless exists. Every agentic run persists the explanation alongside the detected expression and the replacement as structured output (Section~\ref{sec:discussion-observability}), and each rated agentic item carries a human meaning-preservation score. What is missing is only the explanation-side score. A correlation study is therefore the natural follow-up: rate explanation quality independently, either through a second Direct Assessment pass or through an LLM-as-judge scheme with human spot-validation, then correlate the per-item explanation scores against the meaning-preservation ratings. The unit of analysis is the source within an agentic condition, of which the 8B deliverable has 27, so the design should begin with a power analysis at $n = 27$: the pool is small enough that a weak correlation might not be detectable, which is precisely why the test was not bolted on post hoc to the present survey. Stating H4 as open, with a concrete design attached, is the honest position given the evidence actually collected.
+
+\subsection{Future Work}
+\label{sec:future-work}
 
 \begin{itemize}
-    \item What agentic systems can/cannot do
-    \item Where metaphors fundamentally resist literalization
-    \item Limitations:
-          \begin{itemize}
-              \item Conceptual: metaphors encoding meaning that cannot be fully literalized; replacement oversimplifying nuance
-              \item Evaluation limits: Subjectivity of human evaluation; no gold standard for metaphor replacement
-              \item Model dependence: Results vary across LLM providers
-              \item Scope limits: Sentence/MWE level focus; no discourse-wide tracking; primarily English
-          \end{itemize}
+    \item \textbf{Mixture-of-experts evaluation}: Llama 4 (Scout, Maverick) was excluded from this work because the smallest variant exceeds the 40 GB A100's VRAM. With access to A100 80 GB or H100, the within-family scale comparison could be extended into a within-architecture-class comparison, testing whether the agentic decomposition's value transfers to MoE backbones that have different reasoning-vs-throughput tradeoffs.
+    \item \textbf{Decomposition variants}: the no-explanation and no-self-verification variants (Section~\ref{sec:rq2}) are deferred from this thesis to keep the human-evaluation survey one-shot; isolating the contribution of each agentic step is the natural next study.
+    \item \textbf{H4 correlation study}: the explanation-quality versus replacement-correctness design sketched in Section~\ref{sec:discussion-h4}, over the persisted structured outputs and the existing survey ratings.
+    \item \textbf{A human-evaluation instrument for metaphor replacement}: the idiom rubric does not transfer (Section~\ref{sec:eval-methodology}); a metaphor instrument would need conventionality stratification and a "no rewrite needed" option before rubric rating.
+    \item \textbf{Curriculum-style data augmentation}: \cite{Jia2024} reaches SOTA on metaphor detection with single-step inference at test time after curriculum-augmented fine-tuning. If the open-weights detection ceiling at 8B (sentence F1 0.254 on VU metaphor detection) is judged insufficient for downstream E2R deployment, CDA-style fine-tuning is the next intervention to try before declaring the open-weights tier insufficient.
+    \item \textbf{Spanish FACILE integration}: the per-guideline-module pattern of the UPM E2R cluster~\cite{Surez-Figueroa2024,Surez-Figueroa2023} is language-agnostic at the architectural level. Porting the figurative-language replacement module to Spanish is contingent on a Spanish gold-paraphrase dataset; such a dataset does not currently exist for idioms, so the immediate work is dataset creation rather than model adaptation.
 \end{itemize}
+
+\newpage

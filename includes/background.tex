@@ -1,10 +1,217 @@
 \section{Background \& Related Work}
+\label{ch:background}
+
+% ============================================================================
+% === WRITING GUIDE: Chapter 2 (~8 pages; ~2,500 new words) =================
+% ============================================================================
+% JOB: prove the "two disconnected literatures" claim. Figurative-language
+% NLP is detection-centric and never accessibility-oriented; E2R automates
+% guidelines but has no figurative-language module. End on the measurement
+% gap so that Ch 3 (what to build) and Ch 4 (how to judge it) are both
+% pre-motivated.
+% Sections 2.4 (Datasets) and 2.5 (Evaluation Methodology) are already
+% written; new prose is needed for 2.1, 2.2 (new section), 2.3, and 2.6.
+% All paper summaries live in wiki/thesis/papers/ (Obsidian vault).
+% Drop Pukiene 2024 / Baytelman 2024 unless space allows a one-line mention.
+% THEME HOOK: open with "two literatures, one missing guideline"; close 2.6
+% with: the literature offers structure as a promising lever (Tian, Badran,
+% Gao) and warns that no metric can adjudicate it (Lai & Nissim,
+% Alva-Manchego, Scialom); the next two chapters take both seriously.
+% ============================================================================
 
 \subsection{Figurative Language}
-\begin{itemize}
-    \item Idioms vs metaphors (linguistic + cognitive distinction) % TODO: expand
-    \item Prior work on detection, classification, and simplification % TODO: expand
-\end{itemize}
+% --- GUIDE (~1.5 pp): idioms vs metaphors as linguistic phenomena.
+% Must land:
+%  (1) Working definitions: idioms = conventionalised MWEs whose meaning is
+%      non-compositional; metaphors = cross-domain mappings, identified at
+%      token level via MIP/MIPVU \cite{mipvu}. Conventionality spectrum.
+%  (2) Detection state of the art and its critique: \cite{Neidlein2020}
+%      shows high F-scores mask conventionalised word-sense disambiguation,
+%      not metaphor competence (frames the Ch 5 supervised comparison).
+%  (3) LLM figurative competence is contested: \cite{Ichien2024} (GPT-4
+%      emergent novel-metaphor interpretation) vs \cite{Dmitrijev2024}
+%      (pessimistic, pre-GPT-4) vs \cite{Liu2022} (Fig-QA: above chance,
+%      below human). Reconciliation: scale + task framing.
+%  (4) Generation/adaptation side is thin: \cite{Lai2024} survey shows
+%      evaluation is the bottleneck of figurative-language generation.
+
+Figurative language covers expressions whose intended meaning is not the literal
+sum of their words. This thesis works with two kinds. An idiom is a fixed
+multi-word expression whose meaning is conventional and cannot be read off its
+parts: ``spill the beans'' means reveal a secret, and nothing about beans
+explains why. A metaphor describes one thing in terms of another, mapping a
+familiar idea onto a less familiar one, as in ``a flood of complaints''. The two
+differ in how fixed they are: idioms are largely settled units that a speaker
+either knows or does not, while metaphors range from dead and conventional
+(``the leg of a table'') to fresh and novel, invented on the spot. This spread,
+from fully conventional to fully novel, matters for the task, because a
+conventional expression has a stable meaning to recover while a novel one does
+not.
+
+Metaphor is annotated at the level of the individual word. The Metaphor
+Identification Procedure, and its extension MIPVU, marks a word as metaphorical
+when its meaning in context contrasts with a more basic, concrete meaning that
+the contextual sense can be derived from \cite{mipvu}. The VU Amsterdam Metaphor
+Corpus applies this procedure at scale and is the standard resource for metaphor
+detection (Section~\ref{sec:eval-methodology}). Idioms, by contrast, are
+annotated as whole multi-word units that are either idiomatic or literal in a
+given sentence.
+
+Detection has progressed, but its reported scores can mislead. An analysis of
+metaphor-recognition models finds that much of their apparent success is
+conventionalised word-sense disambiguation rather than metaphor competence:
+systems do well on conventional metaphors, which a model can resolve by
+memorised word senses, and substantially worse on unconventional ones
+\cite{Neidlein2020}. A high F-score therefore does not show that a system
+understands metaphor, a point that frames the supervised comparison in
+Chapter~\ref{sec:rq1}.
+
+Whether large language models genuinely handle figurative language is an open
+debate, and the evidence pulls in both directions. On the optimistic side,
+GPT-4 has shown an emergent ability to interpret novel literary metaphors, with
+its readings rated above those of college students by blind judges
+\cite{Ichien2024}. On the skeptical side, models remain weak at detection: one
+study found that the best system recovered only six of twenty metaphorical words,
+arguing that detection needs phrase-level analysis and world knowledge that the
+training data does not supply \cite{Dmitrijev2024}. Benchmark results sit in
+between: on the Fig-QA dataset, language models score well above chance but
+below human level, and the gap is largest in the zero- and few-shot settings
+this thesis uses \cite{Liu2022}. The pattern that reconciles these results is
+that interpreting a given expression is easier for a model than finding the
+expression in running text, and that performance climbs with scale and with how
+the task is framed.
+
+The generative side, rewriting figurative language rather than only labelling
+it, is far less developed, and the reason is measurement. A recent survey of
+figurative-language generation finds that methods have improved sharply with
+pre-trained models while evaluation has not, leaving evaluation as the dominant
+bottleneck: automatic metrics such as BLEU and BERTScore correlate only weakly
+with human judgement on figurative output \cite{Lai2024}. This thesis sits on
+that generative side, and the measurement problem it names is the reason the
+evaluation here is built around human judgement (Chapter~\ref{ch:methodology}).
+
+\subsection{Easy-to-Read and Cognitive Accessibility}
+% --- GUIDE (~1.5 pp): NEW SECTION, carries the FACILE positioning
+% (Mari Carmen's deferred review item).
+% Must land:
+%  (1) E2R guidelines and their target populations; figurative language is
+%      explicitly discouraged by E2R guidance, yet no guideline says how to
+%      replace it: the missing module.
+%  (2) The UPM per-guideline-module pattern: \cite{Surez-Figueroa2023}
+%      (-mente adverbs, superlatives), \cite{Diab2024} (dialogue
+%      conversion), \cite{Surez-Figueroa2024} (FACILE: assess + transform
+%      architecture). Each module automates ONE guideline and validates with
+%      the target population.
+%  (3) Position this thesis as the figurative-language module of that
+%      pattern, in English, with the Spanish port as future work (8.6).
+%  (4) E2R vs generic simplification: distinct goals; rubric implications
+%      (simplicity dimension is the E2R-critical one; pays off in Ch 7).
+
+Easy-to-Read is a set of guidelines for writing text that more people can
+understand. Its readers include people with intellectual disabilities, people
+with low literacy, and people reading in a language that is not their first.
+The most widely used European guidelines, Inclusion Europe's \textit{Information
+for All}, were written for people with intellectual disabilities and give plain
+rules for words, sentences, and layout \cite{InclusionEurope2009}. In Spain the
+same practice is now a formal standard, UNE 153101:2018, which sets out how to
+produce and validate Easy-to-Read documents \cite{UNE2018}. Easy-to-Read is
+therefore not an informal style but a codified accessibility requirement.
+
+These guidelines treat figurative language as a barrier and tell writers to
+remove it. \textit{Information for All} states the rule directly: ``Do not use
+difficult ideas such as metaphors. A metaphor is a sentence that does not
+actually mean what it says'', giving ``it is raining cats and dogs'' as the
+example to avoid \cite{InclusionEurope2009}. The instruction is clear about the
+goal and silent about the method. It says that a metaphor or an idiom should not
+appear in an Easy-to-Read text, but it does not say how to turn one into a plain
+sentence that keeps the original meaning. That step is left to a human editor,
+who must understand the expression and rewrite it by hand. This is the gap the
+thesis addresses: the guideline names figurative language as something to
+remove, but neither it nor any tool says how to replace it.
+
+Work at UPM has begun to automate Easy-to-Read adaptation one guideline at a
+time, building a separate module for each rule rather than one general
+rewriter. There is a module for morphological features, such as adverbs ending
+in \textit{-mente} and superlatives \cite{Surez-Figueroa2023}, and a module for
+converting dialogue into a clearer form \cite{Diab2024}. These modules belong to
+a research line whose support application, FACILE, assesses a document against
+the Easy-to-Read guidelines and then transforms it accordingly
+\cite{Surez-Figueroa2024}. Each module automates one guideline and is checked
+with the readers it serves. This thesis is the figurative-language module of
+that pattern. It works in English, where the figurative-language resources are
+richest; porting it to Spanish, where the FACILE programme already operates, is
+left as future work (Section~\ref{sec:future-work}).
+
+Easy-to-Read adaptation overlaps with automatic text simplification but is not
+the same task. Simplification research aims broadly to make sentences shorter
+or easier, often measured against general readability. Easy-to-Read adaptation
+serves a specific population and a specific set of guidelines, and removing
+figurative language is one of its explicit requirements rather than an optional
+improvement. This difference shapes how the output should be judged. A rewrite
+that keeps the meaning but stays hard to read has not met the Easy-to-Read goal,
+so the evaluation in this thesis scores simplicity as its own dimension
+alongside meaning preservation, a choice that becomes central to the results in
+Chapter~\ref{sec:rq3}.
+
+\subsection{Large Language Models \& Agentic Systems}
+% --- GUIDE (~1.5 pp):
+% Must land:
+%  (1) Zero/one/few-shot prompting; structured output; chain-of-thought.
+%  (2) Decomposition precedents that make H2 a motivated hypothesis, not a
+%      hunch: \cite{Tian2024} (theory-guided multi-step scaffolding beats
+%      vanilla prompting on metaphor), \cite{Badran2025} (SemEval-2025
+%      Task 1A: multi-stage idiom pipeline, competitive results; NOT a
+%      pipeline-vs-monolithic ablation, do not cite for "beats monolithic"),
+%      \cite{Gao2025} (PASS paraphrase + self-check decomposition; clearest
+%      gains on low-transparency idioms, one of two datasets). Optionally
+%      \cite{Hayashi2025}
+%      (context augmentation) as a related scaffolding pattern.
+%  (3) The counterpoint: \cite{Jia2024} reaches SOTA metaphor detection with
+%      supervised curriculum fine-tuning (supervised can still win; H1
+%      cannot be assumed).
+%  (4) Observability: multi-step systems expose intermediate state (traces),
+%      monolithic prompting does not. One paragraph; examined qualitatively
+%      in the Discussion (Section~\ref{sec:discussion-observability}).
+
+Large language models can be steered by their prompt alone, with no change to
+their weights. In zero-shot prompting the model is given only an instruction; in
+one- or few-shot prompting it is also shown one or a handful of worked examples
+and is expected to generalise from them~\cite{Brown2020}.
+The model's output can be constrained to a fixed format, such as a JSON object
+with named fields, so that a program can read the result reliably instead of
+parsing free text. A further technique, chain-of-thought prompting, asks the
+model to write out intermediate reasoning steps before its final answer, which
+helps on tasks that need several steps of inference~\cite{Wei2022}.
+This thesis works in the zero- and one-shot setting throughout, because the
+replacement task has no training data to fine-tune on.
+
+These techniques can be combined into systems that split a task into several
+steps, each handled by its own call to the model. For figurative language, this
+kind of decomposition has precedent. Theory-guided multi-step scaffolding, which
+walks the model through a linguistic procedure rather than asking for a verdict
+directly, improves metaphor reasoning over plain prompting \cite{Tian2024}. A
+paraphrase-then-self-check strategy, in which the model first restates an idiom
+and then checks its own paraphrase, raises idiom understanding without any
+training \cite{Gao2025}. Multi-stage pipelines have also been applied to idiom tasks
+with competitive results \cite{Badran2025}. Together these results make the
+decomposition hypothesis of this thesis (H2) a motivated expectation rather than
+a hunch. A related pattern, augmenting the input with model-generated
+surrounding context, has likewise been shown to help metaphor detection
+\cite{Hayashi2025}.
+
+That expectation is not a certainty. Supervised systems trained for the task
+remain strong: curriculum-style fine-tuning reaches state-of-the-art metaphor
+detection \cite{Jia2024}, so the assumption that a zero-/one-shot pipeline can
+match supervised performance (H1) cannot be taken for granted, and it is tested
+directly in Section~\ref{sec:rq1}.
+
+A practical difference between a decomposed system and a single prompt is that
+the steps are visible. A multi-step pipeline records its intermediate state,
+what it detected, how it explained the expression, and what it produced, so a
+failure can be traced to the step that caused it. A single prompt that emits
+only a final answer leaves no such trace. This observability is a property of
+the design rather than a measured quantity, and it is examined qualitatively in
+the Discussion (Section~\ref{sec:discussion-observability}).
 
 \subsection{Datasets}
 
@@ -26,7 +233,14 @@ SemEval-2022 Task 2 \cite{tayyar-madabushi-etal-2022-semeval} is a shared task o
 
 The English partition contains 3{,}487 sentences after filtering and joining Tasks A and B. Gold paraphrases from Task B are stored alongside each example and used as references for BLEU and BERTScore evaluation. Unlike the VUAMC, SemEval 2022 Task 2 is evaluated at the sentence and span level, with no per-token labels.
 
-\subsubsection{Supporting Datasets (Planned)}
+\subsubsection{Other Figurative-Language Datasets}
+% --- GUIDE (~0.25 pp): these were surveyed but NOT used in any experiment.
+% Compress to one short prose paragraph ("other corpora considered and why
+% the two above were selected"), not a "(Planned)" list: nothing is planned
+% anymore. MAGPIE \cite{magpie} (idiom robustness), TroFi \cite{trofi} and
+% MOH/MOH-X \cite{moh} (verb metaphor), MetaNet (conceptual grounding).
+% Selection rationale: VUAMC = token-level gold + scale; SemEval = the only
+% dataset with gold replacement paraphrases, which the thesis task requires.
 \begin{itemize}
     \item MAGPIE \cite{magpie}: idiom interpretation robustness (qualitative / stress testing)
     \item TroFi \cite{trofi}: verb metaphor detection (focused evaluation)
@@ -43,19 +257,13 @@ Standard automatic metrics are commonly applied to generation and paraphrase tas
 
 \paragraph{BLEU.} BLEU measures n-gram overlap between a system output and one or more reference texts~\cite{papineni2002bleu}. It is precision-oriented and applies a brevity penalty. For figurative language replacement, BLEU is severely misaligned: literal paraphrases of idiomatic expressions intentionally avoid lexical overlap with the gold reference, and multiple semantically equivalent paraphrases may share no surface n-grams. BLEU is retained here primarily as a baseline point of comparison, but its low values should not be interpreted as evidence of poor replacement quality.
 
-\paragraph{SARI.} SARI decomposes quality into Add, Delete, and Keep operations relative to the input and references, and was originally designed for text simplification \cite{xu2016sari}. Figurative-to-literal transformation closely resembles simplification (replacing opaque expressions with transparent ones), making SARI conceptually well-motivated. Its practical limitation is reference dependence; it is not yet implemented but is under consideration.
+\paragraph{SARI.} SARI decomposes quality into Add, Delete, and Keep operations relative to the input and references, and was originally designed for text simplification \cite{xu2016sari}. Figurative-to-literal transformation closely resembles simplification (replacing opaque expressions with transparent ones), making SARI conceptually well-motivated. It is nevertheless not used in this thesis: its reference dependence makes it inapplicable to the metaphor track (the VUAMC has no gold paraphrases), and on the idiom track it would be redundant with the human evaluation, which is the load-bearing instrument for replacement quality.
 
 \paragraph{BERTScore.} BERTScore computes contextual token-embedding similarity between generated and reference texts using a pre-trained language model (RoBERTa in this work), enabling soft alignment rather than exact string matching \cite{zhang2020bertscore}. This makes it more robust to paraphrase variation than BLEU. However, high BERTScore does not guarantee correct interpretation: a plausible but semantically incorrect paraphrase may still achieve a high score. BERTScore is used as the primary automatic metric for replacement evaluation.
 
 \subsubsection{Human Evaluation}
 
-Automatic metrics alone are insufficient for assessing replacement quality. Human evaluation is planned for a sample of 40--50 sentences using a \textit{meaning fidelity} scale (1--5):
-\begin{itemize}
-    \item 1 — Incorrect or misleading interpretation;
-    \item 3 — Partially correct (captures some but not all of the intended meaning);
-    \item 5 — Fully meaning-preserving literal restatement.
-\end{itemize}
-Annotators will also be asked to provide their own literal paraphrase when the system's output is rated below 4, enabling qualitative error analysis.
+Automatic metrics alone are insufficient for assessing figurative-to-literal replacement quality. Recent work in sentence simplification has shown that most automatic metrics correlate only spuriously with human judgement on this class of task \cite{Alva-Manchego2021,Scialom2021}, motivating a primary reliance on human evaluation. The protocol adopted is \textit{Direct Assessment} \cite{Graham2013,Graham2017}, applied to the three-axis rubric (grammaticality, meaning preservation, simplicity) established for sentence simplification by Alva-Manchego et al.\ \cite{Alva-Manchego2020}. Human evaluation is reserved for the open-ended task of replacement, where no single ground truth exists; detection has gold annotations and is evaluated only with the automatic metrics above. The replacement evaluation covers idioms only (SemEval Task B); metaphors are evaluated through detection metrics on detect-then-replace runs (Section~\ref{sec:rq3}). The full survey methodology (continuous-scale design, standardisation and aggregation, quality control, and three deliberate departures from the original DA specification) is the subject of Chapter~\ref{ch:methodology}; the survey instantiation (system conditions, source-sentence pool, respondent recruitment) is part of the RQ3 experimental setup (Section~\ref{subsec:rq3-human-eval}).
 
 \subsubsection{Multi-Layer Evaluation Framework}
 
@@ -67,22 +275,57 @@ The evaluation protocol is structured as four complementary layers, inspired by 
     \item \textbf{Conceptual grounding}: correctness of source--target metaphor mappings and idiom sense disambiguation (planned).
 \end{enumerate}
 
-\subsection{Large Language Models \& Agentic Systems}
-\begin{itemize}
-    \item Zero-shot, one-shot, and few-shot prompting % TODO: expand
-    \item Agentic decomposition (planning, reflection, self-verification) % TODO: expand
-    \item Observability (LangSmith-style traces) % TODO: expand
-\end{itemize}
+\subsection{Synthesis and Research Gap}
+\label{sec:research-gap}
+% --- GUIDE (~0.5 pp): NEW SECTION replacing the old "Literature Review"
+% citation list (all of those papers are now cited in 2.1-2.3 above).
+% Must land, in ~3 paragraphs:
+%  (1) The coverage gap: the figurative-language cluster and the E2R cluster
+%      do not intersect; no prior work treats figurative-language adaptation
+%      as an E2R guideline module. That intersection is the contribution.
+%  (2) The method bet: decomposition precedents (Tian, Gao; Badran as a
+%      pipeline example, not a monolithic comparison) report gains on large
+%      models; whether they hold on a mid-size open-weights deliverable is
+%      what RQ2 tests. Do NOT write "hosted closed-source backbones" (the
+%      per-paper backbone claim is unverified).
+%  (3) The measurement gap: no automatic metric is trusted for replacement
+%      (Lai & Nissim; Alva-Manchego 2021; Scialom 2021), so the evaluation
+%      must be human-grounded: Ch 4 builds that instrument.
+% CLOSING THEME HOOK: "the literature offers structure as a promising lever
+% and warns that no metric can adjudicate it; the next two chapters take
+% both seriously."
 
-\subsection{Literature Review}
-Relevant papers to include:
-\begin{itemize}
-    \item \cite{Surez-Figueroa2024} \bibentry{Surez-Figueroa2024}
-    \item \cite{Surez-Figueroa2023} \bibentry{Surez-Figueroa2023}
-    \item \cite{Dmitrijev2024} \bibentry{Dmitrijev2024}
-    \item \cite{Neidlein2020} \bibentry{Neidlein2020}
-    \item \cite{Liu2022} \bibentry{Liu2022}
-    \item \cite{Lai2024} \bibentry{Lai2024}
-    \item \cite{Ichien2024} \bibentry{Ichien2024}
-    \item \cite{Jia2024} \bibentry{Jia2024}
-\end{itemize}
+The two bodies of work reviewed above do not meet. Research on figurative
+language is centred on detection: it builds systems that find and label idioms
+and metaphors, and even its generative branch stops at producing figurative
+text rather than removing it for a reader. Research on Easy-to-Read adaptation
+takes the opposite stance, rewriting text for accessibility, but it automates
+other guidelines and treats figurative language as something to be avoided
+rather than adapted. No prior work treats figurative-language adaptation as an
+Easy-to-Read guideline module, which is to say no one detects a figurative
+expression and then replaces it with an accessible literal form. That
+intersection is the gap this thesis fills.
+
+The way it tries to fill it rests on a bet that the literature makes plausible
+but does not settle. Several studies suggest that decomposing a
+figurative-language task into explicit steps helps. Theory-guided multi-step
+scaffolding improves metaphor reasoning over plain prompting \cite{Tian2024},
+and a paraphrase-then-self-check prompting strategy raises idiom understanding
+without extra training \cite{Gao2025}; multi-stage pipelines have likewise been
+applied to idiom tasks with competitive results \cite{Badran2025}. These gains
+are reported on large models, and whether the same decomposition still helps on
+a mid-size open-weights model that can be deployed in practice is exactly what this
+thesis tests in RQ2.
+
+The second open question is how to judge the result. No automatic metric is
+trusted for figurative-language replacement: the generation survey names
+evaluation as the field's dominant bottleneck \cite{Lai2024}, and the
+simplification literature shows that common metrics correlate only spuriously
+with human judgement on this class of task \cite{Alva-Manchego2021,Scialom2021}.
+A study of figurative-to-literal rewriting therefore cannot lean on automatic
+scores alone; it has to be grounded in human judgement, and Chapter~\ref{ch:methodology}
+builds that instrument. In short, the literature offers structure as a promising
+lever and warns that no metric can settle it; the next two chapters take both
+seriously.
+
+\newpage

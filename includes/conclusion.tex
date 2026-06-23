@@ -1,7 +1,156 @@
 \section{Conclusion \& Future Work}
+\label{ch:conclusion}
 
-\begin{itemize}
-    \item Summary of findings
-    \item Implications for NLP accessibility
-    \item Directions: multilinguality, discourse-level metaphors, human-in-the-loop
-\end{itemize}
+% ============================================================================
+% === WRITING GUIDE: Chapter 9 (~2 pages, ~900 words) =======================
+% ============================================================================
+% JOB: one verdict paragraph per RQ with the headline number; contributions
+% recap; theme restated in ONE sentence; pointer to future directions (do
+% not rehash 8.6). Write AFTER the Introduction so the two bookends match.
+% Use the same hedge wording as Ch 6 / Ch 8 (never "significantly better"
+% for RQ2; composite is tied).
+% ============================================================================
+
+\subsection{Answers to the Research Questions}
+% --- GUIDE (~1.25 pp):
+%  RQ1 (detection): partial. Zero-shot detection lags supervised SOTA;
+%    within-family scale lifts sentence F1 unevenly across phenomena
+%    (idiom +19.6pp SemEval 0.333 -> 0.529; metaphor only +4.8pp
+%    VU 0.254 -> 0.302), and the schema-commitment prompt effect inverts
+%    at scale (+10/+25pp at 8B vs -3/-11pp at 70B): scale's gains are real
+%    but end at detection.
+%  RQ2 (decomposition): suggestive support. Automatic metrics are blind
+%    (BLEU and BERTScore disagree in direction); the human evaluation shows
+%    a consistent directional advantage on meaning preservation (+0.31
+%    standardised units, p = 0.06-0.08), a tied composite, and failure
+%    traceability as the structural dividend.
+%  RQ3 (replacement): meaning is preserved (raw 73-82) but text is not
+%    substantially simplified (52-64, the weakest dimension everywhere);
+%    idioms outperform metaphors (H3), whose lack of gold paraphrases is
+%    itself the finding; the 70B is rated significantly worse on simplicity
+%    (p = 0.026): in this setup scale did not buy, and may have cost,
+%    human-perceived quality.
+%  H4: stated, untested, design proposed (Section 8.5).
+
+This thesis asked whether an agentic large-language-model pipeline can detect
+figurative language and rewrite it into easier-to-read English, and where the
+quality of that rewriting comes from. The three research questions are answered
+as follows.
+
+The first question asked how well a zero-shot agentic pipeline detects and
+interprets idioms and metaphors, compared with supervised systems. The answer
+is partial. The pipeline detects figurative language but stays below systems
+trained for the task. The comparison here is indicative rather than a
+leaderboard ranking, since the zero-shot setting, the metrics, and the test
+splits all differ from the supervised work, and supervised systems can still win
+on these benchmarks \cite{Jia2024}. Within the open-weights family, a larger
+model helps detection, but unevenly across phenomena: idiom sentence F1 rises by
+almost twenty points from 8B to 70B (SemEval $0.333 \rightarrow 0.529$), while
+metaphor sentence F1 rises by under five (VU $0.254 \rightarrow 0.302$), because
+metaphor is scored against an exhaustive token-level gold that the larger model
+recovers little more of. The gain from prompt wording is less stable still.
+Forcing the detection prompt to also commit to a replacement raises 8B detection
+by ten to twenty-five points but lowers 70B detection by three to eleven, the
+same change with opposite signs. Scale lifts detection, but its gains end there
+(Section~\ref{sec:rq1}).
+
+The second question asked whether breaking the task into explicit steps,
+detection then explanation then transformation, improves on a single prompt.
+The answer is suggestive support, not a confirmed effect. No automatic metric
+could settle the question, since BLEU and BERTScore disagree in direction on the
+same outputs. The human evaluation gives the agentic pipeline a consistent
+directional advantage on meaning preservation (+0.31 standardised units,
+p = 0.06-0.08) that approaches but does not reach conventional significance,
+while the overall composite score is tied with the monolithic baseline
+(z 0.123 vs.\ 0.125). The clearer dividend of decomposition is not a higher
+score but traceability: because the pipeline exposes its steps, every failure
+can be tied to a named step rather than to one opaque rewrite
+(Section~\ref{sec:discussion-observability}). Decomposition helps where the task
+is open-ended, which is the rewriting, and not where it is a yes-or-no decision,
+which is the detection (Section~\ref{sec:rq2}).
+
+The third question asked how well the system replaces figurative expressions
+with literal, meaning-preserving alternatives, and what trade-off arises between
+fidelity and readability. The systems preserve meaning but do not simplify.
+Human raters scored grammaticality and meaning preservation high across all
+systems (raw means in the seventies and eighties) but simplicity low everywhere
+(in the fifties and low sixties), the weakest dimension in every condition.
+Idioms were replaced more reliably than metaphors, as expected (H3); metaphors
+have no gold paraphrases to evaluate against, which is itself part of the
+finding rather than a gap in the data. Scale did not rescue the weak dimension:
+the 70B model was rated significantly worse on simplicity (Wilcoxon p = 0.026),
+so in this setup, scale did not buy, and on simplicity may have cost,
+human-perceived quality (Section~\ref{sec:rq3}).
+
+The fourth hypothesis, that the agent's intermediate explanations correlate with
+the correctness of its replacements (H4), is stated but not tested in this
+thesis. The study needed to measure it, and the design for that study, are set
+out as future work in Section~\ref{sec:discussion-h4}.
+
+\subsection{Contributions and Outlook}
+% --- GUIDE (~0.75 pp): contributions recap (pipeline + adapted DA
+% methodology + transfer findings + 108-alternative by-product dataset);
+% implications for NLP accessibility (the figurative-language module of the
+% FACILE-style per-guideline pattern); one-paragraph outlook (Spanish port,
+% metaphor instrument, H4 study).
+% CLOSING SENTENCE of the thesis: a one-line, past-tense restatement of the
+% central claim, with the evidence counts behind it. Draft to adapt:
+%   "Across two phenomena, two model scales, four prompt designs, and a
+%   20-rater human evaluation, the reliable lever for making figurative
+%   language easy to read was never model size or prompt cleverness: it was
+%   explicit structure, in the system that produced the text and in the
+%   evaluation that judged it."
+
+The thesis makes four contributions. It delivers an agentic open-weights
+pipeline for figurative-language Easy-to-Read adaptation, with a monolithic
+single-prompt system as a designed control and over two hundred persisted,
+reproducible runs. It adapts the Direct Assessment human-evaluation protocol to
+this task, with its departures from prior practice documented, because no
+automatic metric scores figurative-language replacement reliably. It reports
+what does and does not transfer in this task: scale lifts detection but not
+human-perceived replacement quality, prompt gains can reverse in sign across
+model sizes, and decomposition buys a consistent directional advantage on
+meaning preservation. Finally, it leaves behind a dataset of 108 human-written
+alternative replacements and rubric ratings for 81 system outputs, for future
+work.
+
+The findings carry a practical lesson for anyone building such a system. The
+common reflexes, reach for a larger model or tune the prompt, are exactly the
+levers this study found unreliable. The prompt change that helped the 8B model
+hurt the 70B one, so a prompt validated on a small development model can give a
+misleading read on what will help the model that is actually shipped. A larger
+model detected figurative language better yet was rated no better, and worse on
+simplicity, by human readers. The lever that behaved predictably was explicit
+structure: breaking the task into named steps did not raise the score on its
+own, but it made the system's behaviour measurable and every failure
+attributable to a step. For a system meant to serve readers who depend on
+accuracy, that inspectability is worth as much as a metric gain, because it is
+what lets a human catch an error before it reaches the reader.
+
+The wider implication is for accessible-text research. Easy-to-Read guidelines
+say to remove figurative language but not how, and this thesis supplies the
+missing piece as one module in a per-guideline pattern of automated adaptation,
+alongside the modules for morphological features and dialogue. It also marks out
+the work still to be done. The clearest weakness was simplicity: the systems
+kept meaning but did not make the text easier to read, which is the one thing an
+Easy-to-Read tool exists to do. Closing that gap is the most important next
+step, and it points to a rewriting stage trained or prompted for plainness
+directly, with an evaluation that weights simplicity rather than treating it as
+one dimension among three. Metaphors mark out a second piece of unfinished work.
+They have no gold paraphrases to score against, so progress on them is blocked
+less by the model than by the lack of an evaluation instrument; building a
+reference set and a rubric for metaphor replacement would let the field measure
+what it currently can only inspect by hand. A third step returns to the original
+motivation: porting the pipeline from English to Spanish, where the FACILE
+programme already operates, would test whether the structure-over-scale result
+holds across languages and move the work toward the readers it was built for.
+The explanation-quality question (H4) remains open and can be settled by the
+correlation study set out in the Discussion.
+
+Across two figurative phenomena, two model scales, an agentic pipeline set
+against a monolithic baseline, and a twenty-rater human evaluation, the reliable
+lever for making figurative language easy to read was never model size or
+prompt cleverness: it was explicit structure, in the system that produced the
+text and in the evaluation that judged it.
+
+\newpage
