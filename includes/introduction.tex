@@ -35,7 +35,44 @@
 %      no training data and no automatic metric; zero/one-shot LLMs are the
 %      only viable approach for the generative half of the task.
 
-% TODO(jelle): prose.
+Easy-to-Read English is a way of writing meant for people who find standard
+text hard to follow, including people with intellectual disabilities, people
+with low literacy, and people reading in a language that is not their first.
+The guidelines for this style share one rule: avoid figurative language. Idioms
+and metaphors are meant to be removed, because their meaning is not carried by
+the words themselves, so a reader who takes them literally is misled and a
+reader who cannot recover the intended sense is locked out altogether. In this
+setting, figurative language is an accessibility barrier.
+
+The guidelines say to remove such language, but they do not say how to do it,
+and they leave the rewriting to a human editor. Recent work at UPM has begun to
+automate Easy-to-Read adaptation one guideline at a time, with a dedicated
+module for morphological features \cite{Surez-Figueroa2023} and another for
+dialogue structure \cite{Diab2024}, part of a research line on guideline-driven
+adaptation whose support application, FACILE, is described in
+\cite{Surez-Figueroa2024}. Figurative language is
+one of the guidelines this programme has not yet covered, and this thesis is
+its module: a system that detects an idiom or metaphor and rewrites it into
+plain, literal English.
+
+The task sits between two research communities that do not meet. Work on
+figurative language in natural-language processing has built strong systems for
+finding and labelling idioms and metaphors, but it stops at detection and does
+not rewrite the text for a reader. Work on automatic text simplification and
+Easy-to-Read adaptation rewrites text for accessibility, but it handles other
+guidelines and treats figurative language as out of scope. Neither side
+addresses the point where they meet, detecting a figurative expression and
+replacing it with an accessible literal form, and Chapter~\ref{ch:background}
+develops this gap in full.
+
+Large language models are what make the rewriting half of the task possible
+now. Detection alone can be learned from labelled data, and supervised systems
+for it already exist, but replacement cannot be learned the same way: there is
+no training set of figurative sentences paired with accessible literal
+rewrites, and, as this thesis shows, no automatic metric that can score such a
+rewrite reliably. A model that can produce a literal restatement from zero or
+one example is therefore the only practical approach to the generative half of
+the task, and this is the capability that current large language models supply.
 
 \subsection{Problem Statement}
 % --- GUIDE (~0.75 pp): state the task (given an English sentence, detect
@@ -46,7 +83,35 @@
 % workflows, prompts never shared across phenomena. Say "parallel", not
 % "unified" (the implementation deliberately bifurcates).
 
-% TODO(jelle): prose.
+The task this thesis studies is the following. Given an English sentence,
+detect any idiomatic or metaphorical expression in it, and produce a
+restatement that keeps the original meaning, removes the figurative wording,
+and is easier to read. Detection and rewriting are treated as one connected
+job, not two separate ones, because a rewrite is only useful if it lands on
+the right expression and a detection is only useful if something then rewrites
+it.
+
+Idioms and metaphors are handled in parallel, not as one phenomenon. They
+share an architecture but never a prompt: the system runs separate workflows
+for each, because an idiom has a fixed conventional meaning while a metaphor
+is built from an open mapping between two ideas, and the two call for
+different handling. The system is built once and applied twice, with the
+difference between the two phenomena kept explicit rather than blended away.
+
+The central claim of this thesis concerns where reliable quality in this task
+comes from. Common practice expects two things to drive it: a larger model and
+a better-worded prompt. The evidence here points elsewhere. Reliable quality
+comes from explicit structure, that is, from breaking the task into
+inspectable steps and from grounding the evaluation in human judgement. Model
+size and prompt wording are levers whose effect cannot be trusted to hold:
+their gains vary across models and can reverse in sign, and the automatic
+metrics that might catch the reversal cannot see replacement quality at all.
+Explicit task structure is the lever whose effect can be observed, attributed
+to a named step, and trusted. Human evaluation is not itself a lever on
+quality; it is how that quality is made visible. This is what the thesis means
+by structure over scale: not that structure always wins, but that it is the
+lever that can be relied on to mean what it says
+(Section~\ref{sec:discussion-synthesis}).
 
 \subsection{Research Questions and Hypotheses}
 % --- GUIDE (~1 pp): RQ1-RQ3 verbatim from wiki/thesis/research-questions.md:
@@ -66,7 +131,51 @@
 % Observability is framed as a design property examined qualitatively in the
 % Discussion, NOT as a fourth RQ.
 
-% TODO(jelle): prose.
+The thesis is organised around three research questions.
+
+\begin{description}
+  \item[RQ1 (Detection and interpretation).] To what extent can a
+    zero-/one-shot agentic LLM pipeline accurately detect and interpret
+    idiomatic and metaphorical expressions in context, compared to established
+    supervised benchmarks?
+  \item[RQ2 (Agentic decomposition).] Does an explicit agentic decomposition
+    (detection, then explanation, then transformation) improve
+    figurative-language handling compared to monolithic prompt-based LLM
+    approaches?
+  \item[RQ3 (Replacement quality).] How effectively can an agentic LLM system
+    replace idiomatic and metaphorical expressions with literal,
+    meaning-preserving alternatives, and what trade-offs arise between semantic
+    fidelity and readability?
+\end{description}
+
+Four hypotheses make these questions testable.
+
+\begin{description}
+  \item[H1.] A zero-/one-shot agentic LLM pipeline can reach performance
+    comparable to supervised systems on idiom detection and metaphor
+    identification, despite using no task-specific training.
+  \item[H2.] Agentic decomposition improves figurative-language replacement
+    quality compared to single-prompt baselines, particularly for metaphors.
+  \item[H3.] Idiomatic expressions are replaced with meaning-preserving literal
+    alternatives more reliably than conceptual metaphors, because metaphors
+    rest on an open mapping between an abstract idea and a concrete one.
+  \item[H4.] Explicit intermediate explanations generated by the agent
+    correlate positively with the semantic correctness of the final literal
+    replacement.
+\end{description}
+
+H1 through H3 are tested in the empirical chapters. H4 is not tested in this
+thesis. Measuring it requires a separate study that scores explanation quality
+and replacement correctness independently and then correlates them, and that
+study was out of scope here. H4 is kept on the record because it names the next
+natural step, and the design needed to test it is set out as future work in
+Section~\ref{sec:discussion-h4}.
+
+A fourth concern, whether the system's steps are observable enough to explain
+its own outputs, runs through the work but is not posed as a research question.
+It is a property of the design rather than a hypothesis to confirm or reject,
+so it is examined qualitatively in the Discussion
+(Section~\ref{sec:discussion-observability}) rather than tested.
 
 \subsection{Contributions}
 % --- GUIDE (~0.5 pp): four concrete contributions:
@@ -82,13 +191,57 @@
 %  (4) A by-product dataset: 108 human-written alternative replacements +
 %      rubric ratings for 81 system outputs.
 
-% TODO(jelle): prose.
+This thesis makes four contributions.
+
+\begin{enumerate}
+  \item An agentic open-weights pipeline for figurative-language Easy-to-Read
+    adaptation, built on FastAPI, LangGraph, and vLLM, with over two hundred
+    persisted and reproducible runs, and a monolithic single-prompt system as a
+    designed control.
+  \item An adapted Direct Assessment human-evaluation method for
+    figurative-language replacement (Chapter~\ref{ch:methodology}), building on
+    the established Direct Assessment protocol
+    \cite{Graham2013, graham-2015-improving, Graham2017}
+    with its departures from that protocol documented, since no automatic
+    metric scores this task reliably.
+  \item Empirical findings on what does and does not transfer in this task:
+    scale lifts detection but not human-perceived replacement quality, prompt
+    gains can reverse in sign across model sizes, and decomposition buys a
+    consistent directional advantage on meaning preservation.
+  \item A by-product dataset of 108 human-written alternative replacements
+    together with rubric ratings for 81 system outputs, available for future
+    work on this task.
+\end{enumerate}
 
 \subsection{Document Structure}
 % --- GUIDE (~0.5 pp): one sentence per chapter. Close by framing the three
 % empirical chapters as testing three levers: scale (RQ1), structure (RQ2),
 % and task difficulty / fidelity-readability trade-offs (RQ3).
 
-% TODO(jelle): prose.
+The rest of the thesis is organised as follows.
+Chapter~\ref{ch:background} reviews the two literatures the task sits between,
+figurative-language processing and Easy-to-Read adaptation, and closes by
+stating the gap between them.
+Chapter~\ref{ch:system-design} describes the agentic pipeline and the
+monolithic baseline it is compared against.
+Chapter~\ref{ch:methodology} sets out the evaluation method, including the
+adapted Direct Assessment survey and the automatic metrics, and explains why
+the human survey is required rather than optional.
+The three empirical chapters answer one research question each:
+Section~\ref{sec:rq1} reports detection and the effect of scale (RQ1),
+Section~\ref{sec:rq2} reports the agentic-versus-monolithic comparison (RQ2),
+and Section~\ref{sec:rq3} reports replacement quality and the survey results
+(RQ3).
+Chapter~\ref{ch:discussion} assembles these results into the central claim and
+states the limits of the evidence, and
+Chapter~\ref{ch:conclusion} closes with the answers to the research questions
+and the directions they open.
+
+The three empirical chapters can be read as a test of three levers on quality.
+RQ1 tests scale, by comparing an 8B model with a 70B one. RQ2 tests structure,
+by comparing a decomposed pipeline with a single prompt. RQ3 tests the task
+itself, by measuring how well the rewriting holds meaning while making the text
+easier to read, and where those two goals pull against each other. Read
+together, they show that the lever that pays is structure.
 
 \newpage

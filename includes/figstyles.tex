@@ -1,0 +1,51 @@
+% =============================================================================
+% Shared TikZ styles for all thesis diagrams (architecture, pipeline, flows).
+% Loaded once from the preamble. Every diagram should draw only from the node
+% and edge styles defined here, so the figures share one visual vocabulary.
+%
+% The palette is shared with the matplotlib figures (e.g.
+% fig_rating_distributions.pdf): figblue / figorange / figgreen are the same
+% hues used there, so a colour means the same thing across the whole report.
+% =============================================================================
+
+\definecolor{figblue}{HTML}{4C72B0}   % process / pipeline steps
+\definecolor{figorange}{HTML}{DD8452} % monolithic baseline / anti-structure control
+\definecolor{figgreen}{HTML}{55A868}  % data, outputs, persistence
+\definecolor{figviolet}{HTML}{8172B3} % LLM model calls
+\definecolor{figslate}{HTML}{4C4C4C}  % neutral text, arrows, infrastructure
+
+\tikzset{
+  >=Latex,
+  every picture/.style={font=\small\sffamily},
+  % a processing step or module (structured component)
+  proc/.style={rounded corners=2pt, draw=figblue, line width=0.7pt,
+               fill=figblue!8, align=center, inner sep=5pt,
+               minimum height=8.5mm, minimum width=22mm},
+  % an LLM call
+  llm/.style={rounded corners=2pt, draw=figviolet, line width=0.7pt,
+              fill=figviolet!10, align=center, inner sep=5pt,
+              minimum height=8.5mm, minimum width=22mm},
+  % the monolithic baseline (the anti-structure control)
+  mono/.style={rounded corners=2pt, draw=figorange, line width=0.7pt,
+               fill=figorange!12, align=center, inner sep=5pt,
+               minimum height=8.5mm, minimum width=22mm},
+  % a persistent data store (Couchbase, datasets)
+  store/.style={cylinder, shape border rotate=90, aspect=0.28,
+                draw=figslate, fill=figgreen!8, align=center,
+                inner sep=4pt, minimum height=12mm, minimum width=20mm},
+  % an input/output sentence or small artifact
+  io/.style={draw=figslate!70, line width=0.6pt, fill=black!3,
+             rounded corners=1pt, align=center, inner sep=4pt,
+             font=\footnotesize\sffamily},
+  % a dashed grouping container
+  group/.style={rounded corners=4pt, draw=figslate!55, dashed,
+                line width=0.7pt, inner sep=9pt},
+  grouplabel/.style={figslate, font=\footnotesize\sffamily\bfseries},
+  % data / control flow
+  flow/.style={-Latex, line width=0.8pt, draw=figslate},
+  % observability / trace tap (secondary, dashed)
+  trace/.style={-Latex, dashed, line width=0.6pt, draw=figslate!70},
+  % edge label sitting on a flow
+  edgelbl/.style={font=\scriptsize\sffamily, text=figslate,
+                  fill=white, inner sep=1.5pt}
+}

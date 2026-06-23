@@ -20,11 +20,13 @@
 
 All detection experiments use the following configuration:
 \begin{itemize}
-    \item \textbf{Models}: two open-weights LLMs served via vLLM on the UPM A100 cluster --- \texttt{meta-llama/Meta-Llama-3.1-8B-Instruct} (the deliverable system) and \texttt{casperhansen/llama-3.3-70b-instruct-awq} (a same-family scale comparator). Both are accessed through the same OpenAI-compatible interface via the experiment runner's \texttt{vllm:} dispatch prefix.
+    \item \textbf{Models}: two open-weights LLMs served via vLLM on the UPM A100 cluster: \texttt{Llama-3.1-\allowbreak 8B-\allowbreak Instruct} (the deliverable system) and \texttt{Llama-3.3-\allowbreak 70B-\allowbreak Instruct-AWQ} (a same-family scale comparator). Both are accessed through the same OpenAI-compatible interface via the experiment runner's \texttt{vllm:} dispatch prefix.
     \item \textbf{Temperature}: 0 (greedy decoding, for reproducibility);
     \item \textbf{Prompt version}: v1 (zero-shot, no few-shot examples);
-    \item \textbf{Subset size}: 200 examples per dataset, sampled from the beginning of each ingested collection.
+    \item \textbf{Evaluation set}: the full evaluation sets (16{,}202 VUAMC metaphor sentences; 3{,}487 SemEval idiom items).
 \end{itemize}
+
+The exact model identifiers, serving configuration, and a complete index of the run identifiers behind every result reported in this thesis are collected in Appendix~\ref{appendix:run-index}.
 
 For metaphor detection, the prompt instructs the model to follow the MIP procedure: identify each word whose contextual meaning contrasts with its most basic, concrete meaning, and return those words verbatim as \texttt{figurative\_expressions}. For idiom detection, the prompt instructs the model to identify multi-word expressions whose combined meaning cannot be derived compositionally.
 
@@ -32,34 +34,36 @@ In both cases, the LLM output is post-processed to extract character-offset span
 
 \subsection{Results}
 
-Table~\ref{tab:rq1-detection-scale} reports detection-only results on both Llama-3.1-8B-Instruct and Llama-3.3-70B-Instruct-AWQ, prompt v1, $T=0$, on the same deterministic 200-example slice (ordering by \texttt{example\_id}; runs \texttt{1afd4cf1}, \texttt{cfe4f798}, \texttt{26dc7cd2}, \texttt{be7dd99f}). The within-family scale dimension and the per-dataset detection profile are read off the same table.
+Table~\ref{tab:rq1-detection-scale} reports detection-only results on both Llama-3.1-8B-Instruct and Llama-3.3-70B-Instruct-AWQ, prompt v1, $T=0$, on the full evaluation sets (16{,}202 VUAMC metaphor sentences and 3{,}487 SemEval idiom items). The within-family scale dimension and the per-dataset detection profile are read off the same table.
 
 \begin{table}[h!]
 \centering
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lllllllr}
 \hline
 \textbf{Dataset} & \textbf{Model} & \textbf{F1-sent} & \textbf{F1-tok} & \textbf{P-tok} & \textbf{R-tok} & \textbf{F1-span} & \textbf{$\Delta$ at scale} \\
 \hline
-VU Amsterdam & 8B-Instruct       & 0.430 & 0.176 & 0.252 & 0.135 & 0.049 & --- \\
-VU Amsterdam & 70B-Instruct-AWQ  & \textbf{0.635} & \textbf{0.262} & \textbf{0.429} & \textbf{0.188} & \textbf{0.125} & +20.5pp F1-sent \\
+VU Amsterdam & 8B-Instruct       & 0.254 & 0.206 & 0.238 & 0.183 & 0.033 & n/a \\
+VU Amsterdam & 70B-Instruct-AWQ  & \textbf{0.302} & \textbf{0.265} & \textbf{0.355} & \textbf{0.212} & \textbf{0.064} & +4.8pp F1-sent \\
 \hline
-SemEval 2022 & 8B-Instruct       & 0.255 & ---   & ---   & ---   & 0.141 & --- \\
-SemEval 2022 & 70B-Instruct-AWQ  & \textbf{0.435} & ---   & ---   & ---   & \textbf{0.225} & +18.0pp F1-sent \\
+SemEval 2022 & 8B-Instruct       & 0.333 & n/a   & n/a   & n/a   & 0.204 & n/a \\
+SemEval 2022 & 70B-Instruct-AWQ  & \textbf{0.529} & n/a   & n/a   & n/a   & \textbf{0.337} & +19.6pp F1-sent \\
 \hline
-\end{tabular}
-\caption{Zero-shot detection results across model scales (200 examples per dataset, $T=0$, prompt v1, deterministic example ordering). Token-level metrics are not reported for SemEval, whose gold annotations are span- and sentence-level only. Within-family scaling from 8B to 70B-AWQ yields a consistent $+18$--$20$ percentage-point lift in sentence F1 and $+8$pp in span F1, with token-level precision driving most of the metaphor improvement (P-tok 0.252 $\to$ 0.429).}
+\end{tabular}%
+}
+\caption{Zero-shot detection results across model scales, on the full evaluation sets ($T=0$, prompt v1). Token-level metrics are not reported for SemEval, whose gold annotations are span- and sentence-level only. Scaling from 8B to 70B-AWQ lifts idiom sentence F1 by $+19.6$pp (0.333 $\to$ 0.529) but metaphor sentence F1 by only $+4.8$pp (0.254 $\to$ 0.302); on metaphor the gain is concentrated in token precision (0.238 $\to$ 0.355) while recall barely moves (0.183 $\to$ 0.212). Runs: VU 8B \texttt{2d322ad0}, VU 70B \texttt{d47a01fb}, SemEval 8B \texttt{8141d880}, SemEval 70B \texttt{7cbef03f}.}
 \label{tab:rq1-detection-scale}
 \end{table}
 
 \subsection{Analysis}
 
-\paragraph{Sentence-level F1 is higher on metaphors than on idioms in detection-only mode at both scales.} VU metaphor sentence F1 is 0.430 (8B) and 0.635 (70B); SemEval idiom sentence F1 is 0.255 (8B) and 0.435 (70B). This inverts the conventional expectation under H3 (idioms easier than metaphors) and reflects an artefact of the detection-only prompt rather than a property of the phenomena: on idioms the prompt is under-specified for the model (especially at 8B, which often returns no spans at all), whereas on metaphors the model produces broad token-level flags. Span-level F1 tells a more consistent story: at 8B, 0.141 (idiom) versus 0.049 (metaphor), a 2.9$\times$ ratio in idioms' favour; at 70B, 0.225 (idiom) versus 0.125 (metaphor), 1.8$\times$. The right metric for idiom-vs-metaphor difficulty therefore depends on whether the system is being asked to flag the sentence or to localise the expression.
+\paragraph{What these detection scores measure.} The absolute figures carry a ceiling set by the gold standards rather than by the models alone, and the comparisons in this section are read with that in mind. The VUAMC follows the MIPVU procedure, which marks every metaphorically-used word, including the conventional and grammatical metaphors that saturate ordinary English. The systems flag the metaphors a reader would notice and leave the conventional ones unmarked, so token recall against an exhaustive gold is low by construction, and precision exceeds recall throughout. The score measures agreement with MIPVU's full annotation rather than detection of the figurative language that actually needs rewriting, since conventional metaphors usually need no rewrite for an Easy-to-Read reader (Chapter~\ref{ch:discussion}). A second effect is granularity: span F1 with an IoU threshold of 0.5 penalises the boundary mismatch between the models' verbatim phrase outputs and the token-level gold, which is why span F1 sits well below token and sentence F1 for metaphor. With the zero-shot setting on top, the absolute scores understate practical competence and are not comparable to the supervised systems of Table~\ref{tab:rq1-supervised}. The conclusions drawn here are therefore relative: they compare scale, prompt, and phenomenon on the same metric and data, where this ceiling cancels out.
 
-\paragraph{Span F1 is much lower than sentence and token F1 for metaphors.} The IoU $\geq 0.5$ threshold is sensitive to the mismatch between character offsets derived from LLM verbatim outputs and the gold token boundaries in the VUAMC. A word correctly identified as metaphorical but copied with a slight boundary offset (e.g.\ including punctuation) will fail the IoU threshold. At 8B, token F1 (0.176) and sentence F1 (0.430) are therefore more informative for the metaphor task at this granularity. At 70B, the gap narrows: span F1 climbs to 0.125 (still below token F1 0.262 but markedly better in absolute terms).
+\paragraph{Idiom detection exceeds metaphor detection at both scales.} On the full sets, idioms are detected more accurately than metaphors on both metrics: idiom sentence F1 is 0.333 (8B) and 0.529 (70B) against metaphor's 0.254 and 0.302, and idiom span F1 is 0.204 and 0.337 against metaphor's 0.033 and 0.064. This is consistent with H3, which holds idioms to be the more tractable phenomenon, and with the metric ceiling noted above: metaphor detection is scored against MIPVU's exhaustive token-level gold, so the systems' recall is bounded by how much of that exhaustive marking they reproduce, whereas idiom detection targets a single multi-word expression per item.
 
-\paragraph{Within-family scale lifts detection on both phenomena.} 70B-AWQ delivers a consistent $+18$--$20$ percentage-point lift in sentence F1 over 8B-Instruct, on the same prompt, the same 200-example slice, and the same model family (Table~\ref{tab:rq1-detection-scale}). On VU metaphor, the lift is driven primarily by token-level precision climbing from 0.252 to 0.429 ($+17.7$pp): the larger model is much more selective in flagging metaphorical tokens. Recall improves more modestly (0.135 $\to$ 0.188), suggesting the 70B's gain is not from recovering missing tokens but from suppressing the false positives the 8B over-produces. On SemEval idiom, span F1 climbs from 0.141 to 0.225 ($+8.4$pp). The replacement-side metrics on the survey-pool comparator (BLEU 0.061 $\to$ 0.058, BERTScore F1 0.851 $\to$ 0.858; reported in Section~\ref{sec:rq3}) are essentially unchanged. This dissociation --- scale tightly tracks detection accuracy but saturates for replacement quality --- recurs in the discussion of model-dependence limits (Chapter~\ref{ch:discussion}).
+\paragraph{Scale lifts idiom detection but barely metaphor detection.} The step from 8B to 70B is not a uniform gain. It lifts idiom sentence F1 by 19.6 percentage points (0.333 $\to$ 0.529) and idiom span F1 by 13.3 points (0.204 $\to$ 0.337), a substantial improvement. On metaphor the same step gains only 4.8 points of sentence F1 (0.254 $\to$ 0.302). The reason is visible in the token-level split: the 70B's token precision rises sharply (0.238 $\to$ 0.355) while its recall barely moves (0.183 $\to$ 0.212), so the larger model is more selective about which metaphors it flags but recovers few that the 8B missed, and against an exhaustive gold that selectivity buys little. Scale therefore helps detection where the target is a discrete expression (idioms) far more than where the gold demands exhaustive marking (metaphor); the gain is real but phenomenon-dependent, not the uniform lift a single headline figure would suggest.
 
-\paragraph{The detect-then-replace prompt lifts detection on 8B but \textit{costs} F1 on 70B --- consistent across both phenomena.} On the same 200-example slice, the structured-output dtr v2 prompt lifts 8B sentence F1 over detection-only by $+12$ to $+22$ percentage points (VU metaphor 0.430 $\to$ 0.554, run \texttt{821c8e59}; SemEval idiom 0.255 $\to$ 0.492, run \texttt{d6bc60b0}). The schema's auxiliary-replacement field forces the model to commit detected spans alongside a paraphrase; that auxiliary commitment scaffolds detection at small scale. At 70B, however, the same prompt \textit{drops} sentence F1 from each model's own detection-only baseline by $-5$ to $-28$ percentage points (VU metaphor 0.635 $\to$ 0.351, run \texttt{df765b22}, $-28$pp; SemEval idiom 0.435 $\to$ 0.383, run \texttt{92941662}, $-5$pp). The 70B's token precision climbs in dtr v2 (becomes more selective) while recall drops --- the model is well-calibrated enough that the schema constraint over-commits to ``no figurative content'' on borderline examples rather than scaffolding the decision. The same prompt, on the same datasets, swings $+12/+22$pp at 8B and $-28/-5$pp at 70B. This is itself an RQ2 signal that we develop in Section~\ref{sec:rq2} and the discussion in Chapter~\ref{ch:discussion}: prompt-engineering wins on small models do not always transfer at scale, and may invert.
+\paragraph{The detect-then-replace prompt lifts detection on 8B but \textit{costs} F1 on 70B, on both phenomena.} Adding the auxiliary replacement field to the detection prompt (the dtr setting) raises 8B detection but lowers 70B detection: the same change with opposite signs across scale. On the 8B, sentence F1 rises from its detection-only baseline by $+25$pp on SemEval idiom (0.333 $\to$ 0.584) and $+10$pp on VU metaphor (0.254 $\to$ 0.352); forcing the model to commit detected spans alongside a paraphrase scaffolds the decision at small scale. On the 70B, the same prompt \textit{lowers} sentence F1 by $-3$pp on SemEval idiom (0.529 $\to$ 0.496) and $-11$pp on VU metaphor (0.302 $\to$ 0.190), the larger model being calibrated enough that the schema constraint distorts rather than scaffolds, over-committing to ``no figurative content'' on borderline items (the 70B metaphor dtr also produced more malformed outputs, which compounds the drop). The sign flip, $+10/+25$pp at 8B versus $-3/-11$pp at 70B, is the structure-scale interaction developed for RQ2 (Section~\ref{sec:rq2}) and the Discussion (Chapter~\ref{ch:discussion}): a prompt change validated on a small model can reverse at scale. (Detection runs \texttt{2d322ad0}/\texttt{d47a01fb}/\texttt{8141d880}/\texttt{7cbef03f}; dtr runs \texttt{491d332c}/\texttt{ffd25507}/\texttt{d3a7a15c}/\texttt{162b7339}.)
 
 \subsection{Comparison to Supervised Benchmarks}
 % --- GUIDE (~0.75 pp, ~400 words). The one remaining LITERATURE LOOKUP task
@@ -67,9 +71,9 @@ SemEval 2022 & 70B-Instruct-AWQ  & \textbf{0.435} & ---   & ---   & ---   & \tex
 % (e.g.\ from \cite{Neidlein2020} reported ranges, \cite{Jia2024} CDA SOTA)
 % and SemEval-2022 Task 2 Subtask A system papers
 % (\cite{tayyar-madabushi-etal-2022-semeval} baseline + top systems).
-% MANDATORY HEDGE: the 200-example T=0 slice is NOT leaderboard-comparable
-% (different test sets, different splits); frame every comparison as
-% indicative. Fill the caveats column of Table T-D below.
+% MANDATORY HEDGE: the zero-shot full-set results are NOT leaderboard-
+% comparable (different metrics, test sets, training regimes); frame every
+% comparison as indicative. Fill the caveats column of Table T-D below.
 % Must land:
 %  (1) Supervised systems remain clearly ahead on detection (H1 partial).
 %  (2) \cite{Jia2024} as the supervised-can-win counterpoint to H1.
@@ -82,19 +86,28 @@ SemEval 2022 & 70B-Instruct-AWQ  & \textbf{0.435} & ---   & ---   & ---   & \tex
 
 \begin{table}[h!]
 \centering
-\begin{tabular}{llllll}
+\small
+\begin{tabular}{llccp{3.6cm}}
 \hline
-\textbf{Task} & \textbf{System} & \textbf{Metric} & \textbf{Score} & \textbf{This work} & \textbf{Comparability caveats} \\
+\textbf{Task} & \textbf{Supervised system} & \textbf{Supervised F1} & \textbf{This work} & \textbf{Comparability} \\
 \hline
-VU metaphor   & TODO & F1 & TODO & 0.635 (70B, sent) & full test set vs.\ 200-ex.\ slice \\
-SemEval idiom & TODO & F1 & TODO & 0.435 (70B, sent) & zero-shot vs.\ fine-tuned \\
+VU metaphor   & DM-ENS \cite{Neidlein2020}                          & 0.766 (token) & 0.302 (sent.) & token- vs.\ sentence-level; supervised vs.\ zero-shot \\
+SemEval idiom & Top system \cite{tayyar-madabushi-etal-2022-semeval} & $\approx$0.90 (macro) & 0.529 (sent.) & macro vs.\ sentence F1; supervised fine-tuned vs.\ zero-shot LLM \\
 \hline
 \end{tabular}
-\caption{Indicative comparison of zero-shot detection against supervised systems reported in the literature. \textit{[T-D stub: fill in supervised SOTA rows; numbers are not directly comparable across evaluation setups, see caveats column.]}}
+\caption{Indicative comparison of this work's strongest zero-shot detection against representative supervised systems. The numbers are not directly comparable: metrics, test sets, and training regimes differ (final column), so the comparison shows direction, not rank. Supervised figures are token-level metaphoric-class F1 on the VUA all-content-words split (DM-ENS, the 2020 shared-task winner, as analysed in \cite{Neidlein2020}) and macro F1 on the English SemEval-2022 Task 2 Subtask A zero-shot track.}
 \label{tab:rq1-supervised}
 \end{table}
 
-% TODO(jelle): prose.
+Zero-shot detection is best read against what systems trained for these tasks achieve. Table~\ref{tab:rq1-supervised} places this work's strongest detection numbers next to representative supervised results. The comparison is indicative only and is not a leaderboard ranking: the figures here come from the full evaluation sets at temperature zero, scored differently and on different test sets from the supervised work, so the columns align in task but not in evaluation setup.
+
+On both tasks the supervised systems are clearly ahead. For metaphor, the best system in the analysis of \cite{Neidlein2020} reaches a token-level F1 of 0.766 on the standard VUA content-word split, against this work's sentence-level F1 of 0.302 at 70B. These are not the same measurement (token against sentence, supervised against zero-shot), but the direction is not in doubt: a model trained on the VUAMC localises metaphor more accurately than a zero-shot prompt. For idioms, the top system on SemEval-2022 Task 2 Subtask A reaches a macro F1 near 0.90 even in the harder zero-shot track \cite{tayyar-madabushi-etal-2022-semeval}, where the system sees no training examples of the test idioms; this work's 70B sentence F1 is 0.529. Here the unit is the same, sentence-level binary classification, so the gap is more directly meaningful, and it is wide.
+
+One point of terminology needs care. The shared task's zero-shot and one-shot tracks still use fine-tuned supervised systems; they differ only in whether examples of the specific test idioms are provided. This work's zero-shot setting uses no task-specific training at all, which is a stronger sense of the term, so the comparison understates how much supervision the SemEval systems received.
+
+Together these results support a partial reading of H1: a zero-/one-shot pipeline detects figurative language competently but does not match systems trained for the task. Supervised methods are also still improving. \cite{Jia2024} reach state-of-the-art metaphor detection by fine-tuning with curriculum-style data augmentation (F1 0.866 on MOH-X and 0.736 on TroFi), so the premise behind H1, that a general-purpose model can rival task-trained ones, cannot be assumed.
+
+A caveat cuts the other way. \cite{Neidlein2020} show that high supervised metaphor scores partly reflect the disambiguation of conventionalised metaphoric word senses rather than a general grasp of metaphor: the systems ``excel on frequently seen word types with conventionalised metaphoric meanings, which is more akin to word sense disambiguation''. The measured gap may therefore overstate the difference in competence on novel metaphor, where neither approach is strong.
 
 \subsection{Qualitative Examples}
 % --- GUIDE (~0.75 pp, ~300 words): 2-3 annotated examples showing correct
@@ -107,6 +120,12 @@ SemEval idiom & TODO & F1 & TODO & 0.435 (70B, sent) & zero-shot vs.\ fine-tuned
 % SCHEDULE NOTE: if a writing day slips, this section is on the cut list
 % (fold one example into the Analysis section instead).
 
-% TODO(jelle): examples + prose.
+The aggregate detection scores above combine three recurring behaviours, shown here on the SemEval idiom pool. Gold spans are the dataset annotation; the highlighted spans are what the 8B deliverable predicted.
+
+\textbf{Clean detection.} Where the expression is a fixed, well-known idiom, the system marks the gold span exactly. For the source \textit{``his tribute menu led off with Le Grande Fromage, French for \colorbox{figblue!18}{the big cheese}, as his staff called him''}, both the 8B and 70B systems return the gold span, and the sentence-level and span-level judgements agree.
+
+\textbf{Why span F1 trails sentence F1.} A sentence counts as detected if the system finds any figurative span, but span F1 also requires the right boundaries and the right number of expressions. In \textit{``Gastineau is a \colorbox{figblue!18}{fashion plate} of \colorbox{figorange!22}{boho chic} mixed with luxury''}, the 8B system detects \colorbox{figblue!18}{fashion plate} but misses the second idiom \colorbox{figorange!22}{boho chic}. The sentence is a true positive, yet only one of the two gold spans is recovered, so span recall falls while sentence accuracy does not. This pattern, the more obvious idiom caught and a co-occurring one missed, is one reason span F1 sits well below sentence F1 in the scores above, alongside the boundary-offset mismatches discussed earlier.
+
+\textbf{Scale lifts detection.} Some idioms are missed by the 8B model and recovered by the 70B. In \textit{``Carissa said of Matteo's \colorbox{figorange!22}{baby blues}, which he appeared to inherit from his dad''}, the 8B system detects no figurative expression, while the 70B system marks the idiom. Cases like this make up the within-family detection gain reported earlier in this chapter: the larger model finds figurative spans the smaller one does not. These gains are confined to detection; whether the agentic structure adds anything at the replacement step is the question taken up in the next chapter.
 
 \newpage

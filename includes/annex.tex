@@ -28,7 +28,7 @@ Please rate the system's replacement on three dimensions
   Meaning preservation (same meaning as original?)   [ 0 -- 100 ]
   Simplicity (clearer than the idiom version?)       [ 0 -- 100 ]
 
-Optional --- if the replacement misses the mark,
+Optional, if the replacement misses the mark,
 what would you write instead?
 
   [                                                                  ]
@@ -36,14 +36,28 @@ what would you write instead?
 
 The detected expression is shown explicitly so annotators do not have to find the idiom themselves; this controls for ``did the annotator notice the idiom?'' as a confound. The SemEval Task B reference paraphrase is \textit{not} shown: Task B references are comparison sentences, not meaning-equivalent paraphrases, and showing them would distort the meaning-preservation rating.
 
+\subsubsection{Example rated items}
+
+The three system conditions for one source sentence are shown below, drawn from the live survey, to illustrate the comparative design. Respondents saw each replacement on its own screen, in randomised order and without system labels (the survey was blind); the labels here are for documentation only.
+
+\begin{quote}
+\textbf{Source.} ``Most accountants are business \textit{all-rounders} for whom number crunching tax issues occupy but a small part of their day.''\\
+\textbf{Detected idiom.} \textit{all-rounders}\\[4pt]
+\textbf{8B agentic (pipeline).} Most accountants are business people with a wide range of skills and responsibilities for whom number crunching tax issues occupy but a small part of their day.\\[2pt]
+\textbf{8B monolithic.} Most accountants are people who work in business and have many different skills, and calculating tax problems is only a small part of what they do every day.\\[2pt]
+\textbf{70B agentic (pipeline).} Most accountants are business people with a wide range of skills and expertise for whom number crunching tax issues occupy but a small part of their day.
+\end{quote}
+
+Each replacement was rated on grammaticality, meaning preservation, and simplicity using the layout above. The example also shows a pattern the survey results bear out: the rewrites preserve meaning but tend to retain the source's complexity, and the larger model is not visibly simpler.
+
 \subsubsection{Per-respondent flow}
 
 \begin{enumerate}
-    \item \textbf{Intro page} --- plain-language task description, ethics paragraph (supplied by Mari Carmen Su\'arez-Figueroa), and a native-English-speaker self-attestation. No name or email is collected; the only demographic field is the binary native-English-speaker check.
-    \item \textbf{Calibration item} --- one worked example before the rated items, with explanations of each rubric dimension. Not graded; for orientation only.
-    \item \textbf{Rated items (16)} --- random subset of the 90-item pool ($30~\text{sources} \times 3~\text{conditions}$). Sampling is constrained so each respondent sees a mix of the three system conditions and never the same source twice except as a deliberate repeat-pair (Section~\ref{appendix:qc-construction}).
-    \item \textbf{QC items (4)} --- two bad-reference items and two repeat-pair items, interleaved among the 16 rated items at randomised positions. The total of 20 items per respondent matches the 20\% QC ratio of \cite{Graham2013}.
-    \item \textbf{Submission} --- on submit, raw scores are written to a Google Sheet for offline analysis. No real-time feedback is shown to the respondent.
+    \item \textbf{Intro page}: plain-language task description, ethics paragraph (supplied by Mari Carmen Su\'arez-Figueroa), and a native-English-speaker self-attestation. No name or email is collected; the only demographic field is the binary native-English-speaker check.
+    \item \textbf{Calibration item}: one worked example before the rated items, with explanations of each rubric dimension. Not graded; for orientation only.
+    \item \textbf{Rated items (16)}: random subset of the 81-item pool ($27~\text{sources} \times 3~\text{conditions}$). Sampling is constrained so each respondent sees a mix of the three system conditions and never the same source twice except as a deliberate repeat-pair (Section~\ref{appendix:qc-construction}).
+    \item \textbf{QC items (4)}: two bad-reference items and two repeat-pair items, interleaved among the 16 rated items at randomised positions. This gives 20 items per respondent, of which the four QC items are 20\%.
+    \item \textbf{Submission}: on submit, raw scores are written to a Google Sheet for offline analysis. No real-time feedback is shown to the respondent.
 \end{enumerate}
 
 Estimated completion time is 22--25 minutes. A two-respondent pilot is run before live distribution to verify median completion time; if median exceeds 25 minutes the rated-item count is cut to 12 (with the QC count held at 4) before going live.
@@ -75,5 +89,160 @@ In place of the per-worker difference-of-means t-test of \cite{Graham2017} (whic
 The survey is deployed as a Google Form with an Apps Script back-end that implements per-respondent randomised item-subset selection and QC injection. Raw responses dump to a Google Sheet which is exported as CSV for offline aggregation. Distribution is via Mari Carmen Su\'arez-Figueroa's network of native-English-speaker contacts within the UPM Easy-to-Read research group's ecosystem.
 
 The instrument uses 0--100 numeric input fields rather than continuous-slider widgets (Google Forms does not support a true continuous slider). Per Graham et al.\ \cite{Graham2013}, the load-bearing property of the protocol is the \textit{continuity} of the rating scale rather than its render-time resolution; integer 0--100 input is faithful to the protocol.
+
+\subsection{System Prompts}
+\label{appendix:prompts}
+
+The prompts below are reproduced verbatim from the deployed system. The idiom
+set is shown in full; the metaphor prompts differ only in the phenomenon-specific
+guidance (the metaphor detector follows the MIP procedure, shown below), and are
+otherwise analogous. All prompts are versioned by SHA-256 hash on each run
+document for reproducibility.
+
+\paragraph{Idiom detection.}
+\begin{lstlisting}
+You are an expert in linguistics and idiom detection.
+Analyze the provided text and detect if it contains any idiomatic expressions, following the SemEval-2022 Task 2 guidelines.
+
+An idiomatic expression (multi-word expression / MWE) is a phrase whose meaning cannot be fully derived from the meanings of its individual words. Identify any idiomatic expressions in the text.
+
+Return:
+- is_figurative: true if any idiomatic expression is present, false otherwise
+- figurative_expressions: for each idiom, copy the exact multi-word expression from the input verbatim (preserving casing/punctuation).
+- explanation: brief reasoning for your detection
+
+For the replacement field, return null as we are only detecting.
+\end{lstlisting}
+
+\paragraph{Idiom explanation (pipeline step 2).}
+\begin{lstlisting}
+You are an expert in linguistics. You are given an English sentence and a list of idiomatic expressions that have already been detected in it. Your task is to provide, for each detected idiom, a clear literal explanation of what it means in the specific context of this sentence.
+
+Each explanation should be a short, plain-English restatement of the idiom's contextual meaning - phrased so that it could substitute for the idiom in the sentence while preserving the intended meaning. Do not produce a definition in dictionary style; produce a substitution-ready paraphrase of the idiom's meaning here.
+
+Return a JSON object with a single field `explanations`, an array with one entry per detected idiom:
+- expression: the exact idiomatic expression (verbatim from the input list)
+- meaning: a clear literal restatement of the idiom's meaning in this specific context
+\end{lstlisting}
+
+\paragraph{Idiom transformation (pipeline step 3).}
+\begin{lstlisting}
+You are an expert in linguistics and Easy-to-Read text adaptation. You will be given an English sentence, a list of idiomatic expressions detected in it, and a literal meaning for each idiom in this specific context.
+
+Your task: rewrite the FULL sentence shown below the markers, substituting each detected idiom with the supplied literal meaning. Keep all non-idiomatic content, sentence structure, and word order as close to the original as possible - change only the figurative parts.
+
+Output requirements:
+- Output ONLY the rewritten sentence - one line of plain English.
+- Do NOT include the words "Sentence:", "Output:", "Rewritten:", or any labels.
+- Do NOT include explanations, lists, JSON, code blocks, or quotes around the sentence.
+\end{lstlisting}
+
+\paragraph{Monolithic single-prompt baseline (idiom).}
+\begin{lstlisting}
+Rewrite the following sentence in plain, literal English. If it contains any figurative or idiomatic expressions, replace them with literal alternatives that preserve the original meaning. Otherwise, keep the sentence as is.
+
+Output only the rewritten sentence. Do not provide explanations, lists, or any other content.
+\end{lstlisting}
+
+\paragraph{Metaphor detection (MIP procedure).}
+\begin{lstlisting}
+You are an expert in linguistics and metaphor detection.
+Analyze the provided text and detect if it contains any metaphorical usage, following the VU Amsterdam Metaphor Corpus (VUAMC) guidelines.
+
+A word is metaphorical if its contextual meaning differs from its basic, most concrete/physical meaning. Apply the MIP (Metaphor Identification Procedure):
+1. Read the entire text to understand its meaning.
+2. For each lexical unit, determine its contextual meaning.
+3. Determine if the lexical unit has a more basic meaning (more concrete, body-related, or historically older).
+4. If the contextual meaning contrasts with the basic meaning but can be understood in comparison with it, mark it as metaphorical.
+
+Return:
+- is_figurative: true if any word is metaphorical, false otherwise
+- figurative_expressions: for each metaphorical word, copy its exact text from the input verbatim. List each metaphorical word individually.
+- explanation: brief reasoning for your detection
+\end{lstlisting}
+
+\subsection{Ethics and Informed Consent}
+\label{appendix:ethics}
+
+The human-evaluation survey collected no personally identifying information. The only demographic field was a binary native-English-speaker self-attestation (Section~\ref{appendix:survey-design}): no name, email, age, or contact detail was recorded, and responses are stored and reported only in aggregate. Participation was voluntary, could be stopped at any time, and individual ratings were optional, so a respondent could submit a partially completed form.
+
+The intro page presented a plain-language task description, an eligibility question, a consent question, and the data-protection statement reproduced below. The statement was supplied by the supervising group and is given verbatim. A respondent who selected ``I do not consent'' was branched directly to a closing screen and contributed no data.
+
+\paragraph{Eligibility question.} \textit{Which of the following describes you?} with the options ``I am a native English speaker'' and ``I am not a native English speaker, but I have lived in an English-speaking country for ten years or more'' (a third option ended the form).
+
+\paragraph{Consent question.} \textit{I have read the description above and consent to my anonymous responses being used as described}, with the options ``I consent'' and ``I do not consent'' (the latter branching to the closing screen).
+
+\paragraph{Data-protection statement (verbatim).}
+\begin{quote}
+This questionnaire has been designed to ensure complete anonymity. However, we consider it appropriate to inform you about our privacy policy, in accordance with the provisions of the personal data protection regulations. If you agree to complete the questionnaire, we inform you that you consent to your data being processed by the Universidad Polit\'ecnica de Madrid (Ontology Engineering Group), which is responsible for this processing, for the purposes related to the aforementioned research. We also inform you that you may access, rectify and delete your data, as well as exercise other rights, under the terms indicated in the additional information available at the Ontology Engineering Group data-protection page (\texttt{oeg.fi.upm.es/protecciondatos.html}).
+\end{quote}
+
+\subsection{Experimental Configuration and Run Index}
+\label{appendix:run-index}
+
+All experiments use greedy decoding (temperature $0$) for reproducibility. The two open-weights models are \texttt{meta-llama/\allowbreak Meta-Llama-3.1-8B-Instruct} (FP16, the deliverable) and \texttt{casperhansen/\allowbreak llama-3.3-70b-instruct-awq} (the scale comparator), each served with vLLM behind an OpenAI-compatible API. The 70B-AWQ model is served with a maximum context length of 4096 tokens and a GPU memory-utilisation target of 0.90; client-side request concurrency was 16 for the 8B model and 6 for the larger 70B-AWQ model. Every run is persisted under a unique identifier; Table~\ref{tab:appendix-runs} maps each reported result to the run that produced it, so any number in Chapters~\ref{sec:rq1} and~\ref{sec:rq3} can be traced to its source.
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{lll}
+\hline
+\textbf{Condition / dataset} & \textbf{8B run} & \textbf{70B run} \\
+\hline
+\multicolumn{3}{l}{\textit{Detection only (full evaluation set)}} \\
+\quad SemEval idiom (3{,}487)   & \texttt{8141d880} & \texttt{7cbef03f} \\
+\quad VUAMC metaphor (16{,}202) & \texttt{2d322ad0} & \texttt{d47a01fb} \\
+\multicolumn{3}{l}{\textit{Detect-then-replace, v2 (full evaluation set)}} \\
+\quad SemEval idiom   & \texttt{d3a7a15c} & \texttt{162b7339} \\
+\quad VUAMC metaphor  & \texttt{491d332c} & \texttt{ffd25507} \\
+\multicolumn{3}{l}{\textit{Three-step pipeline (full evaluation set)}} \\
+\quad SemEval idiom   & \texttt{b9f31108} & \texttt{4bacbfb2} \\
+\quad VUAMC metaphor  & \texttt{66726606} & \texttt{6c4c1fd5} \\
+\multicolumn{3}{l}{\textit{Replacement metrics, gold-paraphrase subset (200-example slice)}} \\
+\quad SemEval idiom, single-call v1 & \texttt{b2b174ea} & --- \\
+\quad SemEval idiom, single-call v2 & \texttt{d6bc60b0} & \texttt{92941662} \\
+\quad SemEval idiom, pipeline       & \texttt{3551e201} & \texttt{56f19b8c} \\
+\hline
+\end{tabular}
+\caption{Run index. Detection metrics (sentence and span F1) are computed on the full evaluation sets; the reference-based replacement metrics (BLEU, BERTScore) are computed on the SemEval Task B gold-paraphrase items within the deterministic 200-example slice, as explained in Section~\ref{sec:rq3}.}
+\label{tab:appendix-runs}
+\end{table}
+
+\subsection{Per-Respondent Quality Control}
+\label{appendix:qc-table}
+
+Table~\ref{tab:appendix-qc} lists the quality-control outcome for each of the twenty-two returned forms, under the fixed-threshold filters of Section~\ref{sec:qc-filter-design}. Two respondents exceed the 25-point repeat-pair threshold and are dropped; no respondent is removed by the bad-reference rule, and twenty are retained for analysis.
+
+\input{includes/tab_qc}
+
+\subsection{Per-Item Human-Evaluation Scores}
+\label{appendix:item-scores}
+
+Table~\ref{tab:appendix-item-scores} gives the raw per-item means behind the aggregate results of Section~\ref{subsec:rq3-human-eval-results}, for all twenty-seven sources under each of the three systems. These are the disaggregated form of Table~\ref{tab:rq3-survey-results}.
+
+\input{includes/tab_item_scores}
+
+\subsection{Sample of Collected Alternative Replacements}
+\label{appendix:alternatives}
+
+Respondents could add a free-text alternative to any item, and these alternatives form part of the dataset released with this thesis (Section~\ref{subsec:rq3-qualitative}). Table~\ref{tab:appendix-alternatives} shows a representative sample. The recurring pattern is compression: where the system substitutes a literal gloss, the human reader reaches for a shorter, plainer phrase or removes part of the gloss.
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{p{3.4cm}lp{6.2cm}}
+\hline
+\textbf{Detected expression} & \textbf{System} & \textbf{Respondent's proposed alternative} \\
+\hline
+smoking gun & 8B agentic & ``strong evidence against the accused'' \\
+brush the incident aside; chalk it up to ancient history & 70B agentic & ``and worry about it later'' \\
+black operation & 8B agentic & ``or some shady mission'' \\
+all-rounders & 8B monolithic & ``business experts'' \\
+speed trap & 70B agentic & would drop ``or activity'' from the gloss \\
+\hline
+\end{tabular}
+\caption{A sample of the free-text alternative replacements supplied by respondents, illustrating the compression pattern discussed in Section~\ref{subsec:rq3-qualitative}.}
+\label{tab:appendix-alternatives}
+\end{table}
 
 \newpage
