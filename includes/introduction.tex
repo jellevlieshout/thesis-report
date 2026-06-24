@@ -63,7 +63,7 @@ Easy-to-Read adaptation rewrites text for accessibility, but it handles other
 guidelines and treats figurative language as out of scope. Neither side
 addresses the point where they meet, detecting a figurative expression and
 replacing it with an accessible literal form, and Chapter~\ref{ch:background}
-develops this gap in full.
+describes this gap in more detail.
 
 Large language models are what make the rewriting half of the task possible
 now. Detection alone can be learned from labelled data, and supervised systems
@@ -180,7 +180,7 @@ so it is examined qualitatively in the Discussion
 \subsection{Contributions}
 % --- GUIDE (~0.5 pp): four concrete contributions:
 %  (1) An agentic open-weights pipeline for figurative-language E2R
-%      adaptation (FastAPI + LangGraph + vLLM; 200+ persisted, reproducible
+%      adaptation (FastAPI + LangGraph + vLLM; all runs persisted, reproducible
 %      runs), with a monolithic baseline as designed control.
 %  (2) An adapted Direct Assessment human-evaluation methodology for
 %      figurative-language replacement (Ch 4), with documented departures
@@ -195,8 +195,8 @@ This thesis makes four contributions.
 
 \begin{enumerate}
   \item An agentic open-weights pipeline for figurative-language Easy-to-Read
-    adaptation, built on FastAPI, LangGraph, and vLLM, with over two hundred
-    persisted and reproducible runs, and a monolithic single-prompt system as a
+    adaptation, built on FastAPI, LangGraph, and vLLM, with all experiments
+    persisted and reproducible, and a monolithic single-prompt system as a
     designed control.
   \item An adapted Direct Assessment human-evaluation method for
     figurative-language replacement (Chapter~\ref{ch:methodology}), building on
