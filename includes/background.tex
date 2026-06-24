@@ -70,7 +70,7 @@ Whether large language models genuinely handle figurative language is an open
 debate, and the evidence pulls in both directions. On the optimistic side,
 GPT-4 has shown an emergent ability to interpret novel literary metaphors, with
 its readings rated above those of college students by blind judges
-\cite{Ichien2024}. On the skeptical side, models remain weak at detection: one
+\cite{Ichien2024}. On the sceptical side, models remain weak at detection: one
 study found that the best system recovered only six of twenty metaphorical words,
 arguing that detection needs phrase-level analysis and world knowledge that the
 training data does not supply \cite{Dmitrijev2024}. Benchmark results sit in
@@ -179,7 +179,7 @@ one- or few-shot prompting it is also shown one or a handful of worked examples
 and is expected to generalise from them~\cite{Brown2020}.
 The model's output can be constrained to a fixed format, such as a JSON object
 with named fields, so that a program can read the result reliably instead of
-parsing free text. A further technique, chain-of-thought prompting, asks the
+parsing free text. A further technique, chain-of-thought (CoT) prompting, asks the
 model to write out intermediate reasoning steps before its final answer, which
 helps on tasks that need several steps of inference~\cite{Wei2022}.
 This thesis works in the zero- and one-shot setting throughout, because the
@@ -231,7 +231,7 @@ SemEval-2022 Task 2 \cite{tayyar-madabushi-etal-2022-semeval} is a shared task o
     \item \textbf{Subtask B} provides gold literal paraphrases of the full sentence for a subset of Subtask A examples, enabling evaluation of replacement quality.
 \end{itemize}
 
-The English partition contains 3{,}487 sentences after filtering and joining Tasks A and B. Gold paraphrases from Task B are stored alongside each example and used as references for BLEU and BERTScore evaluation. Unlike the VUAMC, SemEval 2022 Task 2 is evaluated at the sentence and span level, with no per-token labels.
+The English partition contains 3{,}487 sentences after filtering and joining Tasks A and B. Gold paraphrases from Task B are stored alongside each example and used as references for BLEU and BERTScore evaluation. Unlike the VUAMC, SemEval-2022 Task 2 is evaluated at the sentence and span level, with no per-token labels.
 
 \subsubsection{Other Figurative-Language Datasets}
 % --- GUIDE (~0.25 pp): these were surveyed but NOT used in any experiment.
