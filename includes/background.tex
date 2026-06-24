@@ -259,7 +259,7 @@ Standard automatic metrics are commonly applied to generation and paraphrase tas
 
 \paragraph{SARI.} SARI decomposes quality into Add, Delete, and Keep operations relative to the input and references, and was originally designed for text simplification \cite{xu2016sari}. Figurative-to-literal transformation closely resembles simplification (replacing opaque expressions with transparent ones), making SARI conceptually well-motivated. It is nevertheless not used in this thesis: its reference dependence makes it inapplicable to the metaphor track (the VUAMC has no gold paraphrases), and on the idiom track it would be redundant with the human evaluation, which is the load-bearing instrument for replacement quality.
 
-\paragraph{BERTScore.} BERTScore computes contextual token-embedding similarity between generated and reference texts using a pre-trained language model (RoBERTa in this work), enabling soft alignment rather than exact string matching \cite{zhang2020bertscore}. This makes it more robust to paraphrase variation than BLEU. However, high BERTScore does not guarantee correct interpretation: a plausible but semantically incorrect paraphrase may still achieve a high score. BERTScore is used as the primary automatic metric for replacement evaluation.
+\paragraph{BERTScore.} BERTScore computes contextual token-embedding similarity between generated and reference texts using a pre-trained language model as its embedding backbone (here the default RoBERTa model that BERTScore ships with, not a model trained for this thesis), enabling soft alignment rather than exact string matching \cite{zhang2020bertscore}. This makes it more robust to paraphrase variation than BLEU. However, high BERTScore does not guarantee correct interpretation: a plausible but semantically incorrect paraphrase may still achieve a high score. BERTScore is used as the primary automatic metric for replacement evaluation.
 
 \subsubsection{Human Evaluation}
 
@@ -295,7 +295,8 @@ The evaluation protocol is structured as four complementary layers, inspired by 
 % and warns that no metric can adjudicate it; the next two chapters take
 % both seriously."
 
-The two bodies of work reviewed above do not meet. Research on figurative
+The two bodies of work reviewed above, figurative-language processing and
+Easy-to-Read adaptation, do not meet. Research on figurative
 language is centred on detection: it builds systems that find and label idioms
 and metaphors, and even its generative branch stops at producing figurative
 text rather than removing it for a reader. Research on Easy-to-Read adaptation

@@ -53,7 +53,7 @@ Single-call CoT & v2                     & 70B & 0.496 & 0.272 & 0.423 & 0.915 \
 \hline
 \end{tabular}%
 }
-\caption{Idiom detect-then-replace on SemEval 2022 Task A/B, $T=0$. Single-call CoT runs use the structured-output schema requiring detection + replacement in one inference; 3-step pipeline runs separate detection, explanation, and transformation into three sequential LLM calls. \textbf{Detection metrics} (F1-sent, F1-span) are computed on the full evaluation set (runs: 8B v2 \texttt{d3a7a15c}, 70B v2 \texttt{162b7339}, 8B pipeline \texttt{b9f31108}, 70B pipeline \texttt{4bacbfb2}); the v1 stub was not rerun for detection at full scale (---), as the thesis uses the v2 prompt throughout. \textbf{Replacement metrics} (BLEU, BERTScore) are computed on the Task B gold-paraphrase items within the deterministic 200-example slice, the only items with a gold literal paraphrase (runs: 8B v1 \texttt{b2b174ea}, 8B v2 \texttt{d6bc60b0}, 70B v2 \texttt{92941662}, 8B pipeline \texttt{3551e201}, 70B pipeline \texttt{56f19b8c}).}
+\caption{Idiom detect-then-replace on SemEval 2022 Task A/B, $T=0$. Single-call CoT runs use the structured-output schema requiring detection + replacement in one inference; 3-step pipeline runs separate detection, explanation, and transformation into three sequential LLM calls. \textbf{Detection metrics} (F1-sent, F1-span) are computed on the full evaluation set (runs: 8B v2 \texttt{d3a7a15c}, 70B v2 \texttt{162b7339}, 8B pipeline \texttt{b9f31108}, 70B pipeline \texttt{4bacbfb2}); the v1 stub was not rerun for detection at full scale (---), as the thesis uses the v2 prompt throughout. \textbf{Replacement metrics} (BLEU, BERTScore) are computed on the Task B gold-paraphrase items within the deterministic 200-example slice, the only items with a gold literal paraphrase (runs: 8B v1 \texttt{b2b174ea}, 8B v2 \texttt{d6bc60b0}, 70B v2 \texttt{92941662}, 8B pipeline \texttt{3551e201}, 70B pipeline \texttt{56f19b8c}). No condition is highlighted: the differences across conditions are within sample noise, and BERTScore is tied at $\sim$0.915.}
 \label{tab:rq3-semeval}
 \end{table}
 
@@ -67,7 +67,7 @@ BLEU values are low overall (0.397--0.430), as expected: valid literal paraphras
 
 \subsection{Metaphor Replacement (VU Amsterdam)}
 
-The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore inapplicable. Replacement quality for metaphors is therefore assessed through (a) detection metrics on detect-then-replace runs (Table~\ref{tab:rq3-vu}) and (b) qualitative inspection. Metaphor replacement is not in scope for the human-evaluation survey: as discussed in Section~\ref{sec:eval-methodology}, the rubric triad (grammaticality, meaning preservation, simplicity) is calibrated for idiom replacement, where the figurative-to-literal mapping is well-defined; conventional metaphors (\textit{life is a journey}) often do not require replacement at all, and including them would dilute the rated pool.
+The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore inapplicable. Replacement quality for metaphors is therefore assessed through (a) detection metrics on detect-then-replace runs (Table~\ref{tab:rq3-vu}) and (b) qualitative inspection. Metaphor replacement is not in scope for the human-evaluation survey: as discussed in Section~\ref{sec:eval-methodology}, the three-part rubric (grammaticality, meaning preservation, simplicity) is calibrated for idiom replacement, where the figurative-to-literal mapping is well-defined; conventional metaphors (\textit{life is a journey}) often do not require replacement at all, and including them would dilute the rated pool.
 
 \begin{table}[h!]
 \centering
@@ -76,7 +76,7 @@ The VUAMC does not include gold literal paraphrases, making BLEU and BERTScore i
 \textbf{Task} & \textbf{F1-sent} & \textbf{F1-tok} & \textbf{F1-span} \\
 \hline
 Detection only            & 0.254 & 0.206 & 0.033 \\
-Detect-then-replace (v2)  & 0.352 & 0.253 & 0.050 \\
+Detect-then-replace (v2)  & \textbf{0.352} & \textbf{0.253} & \textbf{0.050} \\
 \hline
 \end{tabular}
 \caption{Metaphor detection metrics for detection-only vs.\ detect-then-replace (chain-of-thought, v2) runs on the full VUAMC evaluation set (16{,}202 sentences; Llama-3.1-8B-Instruct, $T=0$). The detect-then-replace task lifts sentence F1 by 9.8 percentage points over detection-only. Runs: detection \texttt{2d322ad0}, detect-then-replace \texttt{491d332c}.}
@@ -148,12 +148,12 @@ The survey is the only instrument in this thesis that scores replacement quality
 & \multicolumn{3}{c|}{\textbf{Raw means (0--100)}} & \multicolumn{4}{c}{\textbf{Standardised ($z$)}} \\
 \textbf{System} & \textbf{Gram.} & \textbf{Mean.} & \textbf{Simp.} & \textbf{Gram.} & \textbf{Mean.} & \textbf{Simp.} & \textbf{Comp.} \\
 \hline
-Llama-3.1-8B agentic     & 83.1 & 81.6 & 60.6 & $0.411$ & $0.336$ & $-0.378$ & $0.123$ \\
-Llama-3.1-8B monolithic  & 85.4 & 72.6 & 64.1 & $0.520$ & $0.069$ & $-0.214$ & $0.125$ \\
+Llama-3.1-8B agentic     & 83.1 & \textbf{81.6} & 60.6 & $0.411$ & $\mathbf{0.336}$ & $-0.378$ & $0.123$ \\
+Llama-3.1-8B monolithic  & \textbf{85.4} & 72.6 & \textbf{64.1} & $\mathbf{0.520}$ & $0.069$ & $\mathbf{-0.214}$ & $0.125$ \\
 Llama-3.3-70B agentic    & 78.4 & 76.4 & 51.9 & $0.253$ & $0.162$ & $-0.674$ & $-0.086$ \\
 \hline
 \end{tabular}
-\caption{Human-evaluation results by system: raw 0--100 means and per-annotator-standardised ($z$) scores per rubric dimension, with the composite as the mean of the three standardised dimensions. 20 respondents after quality control; all 81 (source, system) pairs rated $\geq 2$ times, 71 of 81 rated $\geq 3$ times.}
+\caption{Human-evaluation results by system: raw 0--100 means and per-annotator-standardised ($z$) scores per rubric dimension, with the composite as the mean of the three standardised dimensions. 20 respondents after quality control; all 81 (source, system) pairs rated $\geq 2$ times, 71 of 81 rated $\geq 3$ times. The best value in each rubric dimension is shown in bold; the composite is not highlighted, as the two 8B conditions are statistically tied (Section~\ref{subsec:rq2-human-eval-results}).}
 \label{tab:rq3-survey-results}
 \end{table}
 
