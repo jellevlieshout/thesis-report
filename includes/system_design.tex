@@ -56,14 +56,14 @@ More formally, the system accepts a sentence $s$ and outputs:
     \item Optionally, a literal paraphrase $\hat{s}$ of the full sentence, with all figurative expressions replaced by meaning-preserving literal alternatives.
 \end{itemize}
 
-Two task variants are supported: \textit{detection} (spans, labels, and explanation only) and \textit{detect-then-replace} (additionally producing $\hat{s}$). Both are evaluated over two phenomena independently: \textit{metaphors}, benchmarked against the VU Amsterdam Metaphor Corpus \cite{vuamsterdammetaphorcorpus}, and \textit{idioms}, benchmarked against SemEval 2022 Task 2 \cite{tayyar-madabushi-etal-2022-semeval}. A notable challenge is that some metaphors encode meaning that resists full literalisation without loss; replacement decisions therefore require nuanced linguistic understanding beyond surface paraphrase.
+Two task variants are supported: \textit{detection} (spans, labels, and explanation only) and \textit{detect-then-replace} (additionally producing $\hat{s}$). Both are evaluated over two phenomena independently: \textit{metaphors}, benchmarked against the VU Amsterdam Metaphor Corpus \cite{vuamsterdammetaphorcorpus}, and \textit{idioms}, benchmarked against SemEval-2022 Task 2 \cite{tayyar-madabushi-etal-2022-semeval}. A notable challenge is that some metaphors encode meaning that resists full literalisation without loss; replacement decisions therefore require nuanced linguistic understanding beyond surface paraphrase.
 
 \subsection{Agentic Pipeline}
 
 The system is implemented as four LangGraph workflows, one per (phenomenon, task) combination:
 \begin{itemize}
     \item \texttt{metaphor\_detection\_graph}: detects metaphorical words or phrases, following VUAMC MIP (Metaphor Identification Procedure) guidelines;
-    \item \texttt{idiom\_detection\_graph}: detects multi-word idiomatic expressions, following SemEval 2022 Task 2 annotation conventions;
+    \item \texttt{idiom\_detection\_graph}: detects multi-word idiomatic expressions, following SemEval-2022 Task 2 annotation conventions;
     \item \texttt{metaphor\_detect\_then\_replace\_graph}: detects metaphors and produces a literal sentence paraphrase;
     \item \texttt{idiom\_detect\_then\_replace\_graph}: detects idioms and produces a literal sentence paraphrase.
 \end{itemize}
